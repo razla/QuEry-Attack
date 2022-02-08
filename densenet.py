@@ -90,13 +90,13 @@ class DenseNet(nn.Module):
     """
 
     def __init__(
-            self,
-            growth_rate=32,
-            block_config=(6, 12, 24, 16),
-            num_init_features=64,
-            bn_size=4,
-            drop_rate=0,
-            num_classes=10,
+        self,
+        growth_rate=32,
+        block_config=(6, 12, 24, 16),
+        num_init_features=64,
+        bn_size=4,
+        drop_rate=0,
+        num_classes=10,
     ):
 
         super(DenseNet, self).__init__()
@@ -171,14 +171,14 @@ class DenseNet(nn.Module):
 
 
 def _densenet(
-        arch,
-        growth_rate,
-        block_config,
-        num_init_features,
-        pretrained,
-        progress,
-        device,
-        **kwargs
+    arch,
+    growth_rate,
+    block_config,
+    num_init_features,
+    pretrained,
+    progress,
+    device,
+    **kwargs
 ):
     model = DenseNet(growth_rate, block_config, num_init_features, **kwargs)
     if pretrained:

@@ -4,6 +4,7 @@ import torch.nn as nn
 import numpy as np
 import torch
 from piqa import SSIM
+from pathlib import Path
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -64,39 +65,40 @@ class EvoAttack():
         return loss
 
     def compute_fitness(self, pop):
-        self.fitnesses = []
-        for individual in pop:
-            self.n_queries += 1
-            if self.metric == 'SSIM':
-                if self.logits == True:
-                    self.fitnesses.append(self.get_label_prob(individual) - self.reg * self.ssim_loss(individual))
+        with torch.no_grad():
+            self.fitnesses = []
+            for individual in pop:
+                self.n_queries += 1
+                if self.metric == 'SSIM':
+                    if self.logits == True:
+                        self.fitnesses.append(self.get_label_prob(individual) - self.reg * self.ssim_loss(individual))
+                    else:
+                        self.fitnesses.append(
+                            (1 - self.check_pred(individual).item()) - self.reg * self.ssim_loss(individual))
+                elif self.metric == 'l1':
+                    if self.logits == True:
+                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l1_loss(individual))
+                    else:
+                        self.fitnesses.append(
+                            (1 - self.check_pred(individual).item()) - self.reg * self.l1_loss(individual))
+                elif self.metric == 'l2':
+                    if self.logits == True:
+                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l2_loss(individual))
+                    else:
+                        self.fitnesses.append(
+                            (1 - self.check_pred(individual).item()) - self.reg * self.l2_loss(individual))
+                elif self.metric == 'linf':
+                    if self.logits == True:
+                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.linf_loss(individual))
+                    else:
+                        self.fitnesses.append(
+                            (1 - self.check_pred(individual).item()) - self.reg * self.linf_loss(individual))
                 else:
-                    self.fitnesses.append(
-                        (1 - self.check_pred(individual).item()) - self.reg * self.ssim_loss(individual))
-            elif self.metric == 'l1':
-                if self.logits == True:
-                    self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l1_loss(individual))
-                else:
-                    self.fitnesses.append(
-                        (1 - self.check_pred(individual).item()) - self.reg * self.l1_loss(individual))
-            elif self.metric == 'l2':
-                if self.logits == True:
-                    self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l2_loss(individual))
-                else:
-                    self.fitnesses.append(
-                        (1 - self.check_pred(individual).item()) - self.reg * self.l2_loss(individual))
-            elif self.metric == 'linf':
-                if self.logits == True:
-                    self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.linf_loss(individual))
-                else:
-                    self.fitnesses.append(
-                        (1 - self.check_pred(individual).item()) - self.reg * self.linf_loss(individual))
-            else:
-                raise ValueError('No such loss metric!')
-            if (self.check_pred(individual)):
-                return True
+                    raise ValueError('No such loss metric!')
+                if (self.check_pred(individual)):
+                    return True
 
-        return False
+            return False
 
     def get_best_individual(self):
         best_candidate_index = np.argmin(self.fitnesses)
@@ -180,9 +182,11 @@ class EvoAttack():
         best_individual = self.get_best_individual()
         if self.best_attacks != []:
             grid_image = make_grid(self.best_attacks)
-            save_image(grid_image, f'../figures/{self.dataset}_grid.png')
+            figures_path = Path('figures')
+            figures_path.mkdir()
+            save_image(grid_image, figures_path / f'{self.dataset}_grid.png')
             orig_and_best = torch.cat((self.renormalize(self.img), self.renormalize(best_individual)), dim=3)
-            save_image(orig_and_best, f'../figures/test_{self.metric}.png')
+            save_image(orig_and_best, figures_path / f'test_{self.metric}.png')
         if not self.stop_criterion():
             if self.verbose:
                 print("################################")
