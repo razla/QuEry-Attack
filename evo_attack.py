@@ -7,8 +7,10 @@ from piqa import SSIM
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+
 class EvoAttack():
-    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen = 1500, pop_size = 10, n_tournament=5, verbose=True, perturbed_pixels = 10, epsilon=0.03, reg=0.5, metric='SSIM'):
+    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=1500, pop_size=10,
+                 n_tournament=5, verbose=True, perturbed_pixels=10, epsilon=0.03, reg=0.5, metric='SSIM'):
         self.model = model
         self.img = img
         self.label = label
@@ -56,7 +58,6 @@ class EvoAttack():
         loss = criterion(individual, self.img)
         return loss
 
-
     def ssim_loss(self, individual):
         criterion = SSIM().to(device)
         loss = criterion(individual, self.img)
@@ -70,28 +71,33 @@ class EvoAttack():
                 if self.logits == True:
                     self.fitnesses.append(self.get_label_prob(individual) - self.reg * self.ssim_loss(individual))
                 else:
-                    self.fitnesses.append((1 - self.check_pred(individual).item()) - self.reg * self.ssim_loss(individual))
+                    self.fitnesses.append(
+                        (1 - self.check_pred(individual).item()) - self.reg * self.ssim_loss(individual))
             elif self.metric == 'l1':
                 if self.logits == True:
                     self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l1_loss(individual))
                 else:
-                    self.fitnesses.append((1 - self.check_pred(individual).item()) - self.reg * self.l1_loss(individual))
+                    self.fitnesses.append(
+                        (1 - self.check_pred(individual).item()) - self.reg * self.l1_loss(individual))
             elif self.metric == 'l2':
                 if self.logits == True:
                     self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l2_loss(individual))
                 else:
-                    self.fitnesses.append((1 - self.check_pred(individual).item()) - self.reg * self.l2_loss(individual))
+                    self.fitnesses.append(
+                        (1 - self.check_pred(individual).item()) - self.reg * self.l2_loss(individual))
             elif self.metric == 'linf':
                 if self.logits == True:
                     self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.linf_loss(individual))
                 else:
-                    self.fitnesses.append((1 - self.check_pred(individual).item()) - self.reg * self.linf_loss(individual))
+                    self.fitnesses.append(
+                        (1 - self.check_pred(individual).item()) - self.reg * self.linf_loss(individual))
             else:
                 raise ValueError('No such loss metric!')
             if (self.check_pred(individual)):
                 return True
 
         return False
+
     def get_best_individual(self):
         best_candidate_index = np.argmin(self.fitnesses)
         return self.current_pop[best_candidate_index]
@@ -113,7 +119,8 @@ class EvoAttack():
                 current_pixel = individual[0][channel][i][j].cpu()
                 # for SSIM loss
                 # pixel_pertube = torch.tensor(np.random.uniform(max(0, current_pixel - self.epsilon), min(1, current_pixel + self.epsilon)))
-                pixel_pertube = torch.tensor(np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon))
+                pixel_pertube = torch.tensor(
+                    np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon))
                 individual[0][channel][i][j] = pixel_pertube
         return individual.to(device)
 
@@ -124,10 +131,12 @@ class EvoAttack():
         flattened_ind2 = individual2[0][channel].flatten()
         flattened_ind1_prefix = flattened_ind1[: crossover_idx]
         flattened_ind2_prefix = flattened_ind2[: crossover_idx]
-        flattened_ind1_suffix = flattened_ind1[crossover_idx :]
-        flattened_ind2_suffix = flattened_ind2[crossover_idx: ]
-        individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2], shape[3])
-        individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2], shape[3])
+        flattened_ind1_suffix = flattened_ind1[crossover_idx:]
+        flattened_ind2_suffix = flattened_ind2[crossover_idx:]
+        individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2],
+                                                                                                        shape[3])
+        individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
+                                                                                                        shape[3])
         return individual1, individual2
 
     def selection(self):
@@ -142,7 +151,6 @@ class EvoAttack():
             j = np.random.randint(0, shape[3])
             individual1, individual2 = self.swap(individual1, individual2, channel, i, j)
         return individual1, individual2
-
 
     def evolve_new_gen(self):
         new_gen = []

@@ -7,7 +7,6 @@ import torch.nn.functional as F
 
 __all__ = ["GoogLeNet", "googlenet"]
 
-
 _GoogLeNetOuputs = namedtuple(
     "GoogLeNetOuputs", ["logits", "aux_logits2", "aux_logits1"]
 )

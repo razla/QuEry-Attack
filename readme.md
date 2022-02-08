@@ -1,7 +1,7 @@
 
 ## Prepare the environment
-    conda create ...
-    conda activate ...
+    conda create -n evo_attack numpy pytorch
+    conda activate evo_attack
     pip install piqa
 
 ## Download the trained models

@@ -1,5 +1,6 @@
 import torch.nn as nn
 
+
 class ConvNet(nn.Module):
     def __init__(self, in_channels, out_channels=[32, 64, 128], fc_dims=[512, 128, 10]):
         super().__init__()

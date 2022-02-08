@@ -31,4 +31,3 @@ if __name__ == '__main__':
             evolution = evo_attack.evolve()
             evo_attack = EvoAttack(model, img, label, dataset, metric='linf')
             evolution = evo_attack.evolve()
-

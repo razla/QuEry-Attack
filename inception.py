@@ -7,7 +7,6 @@ import torch.nn.functional as F
 
 __all__ = ["Inception3", "inception_v3"]
 
-
 _InceptionOuputs = namedtuple("InceptionOuputs", ["logits", "aux_logits"])
 
 
