@@ -101,7 +101,7 @@ class EvoAttack():
             return False
 
     def get_best_individual(self):
-        best_candidate_index = np.argmin(self.fitnesses)
+        best_candidate_index = torch.argmin(torch.Tensor(self.fitnesses))
         return self.current_pop[best_candidate_index]
 
     def check_pred(self, individual):
@@ -183,7 +183,7 @@ class EvoAttack():
         if self.best_attacks != []:
             grid_image = make_grid(self.best_attacks)
             figures_path = Path('figures')
-            figures_path.mkdir()
+            figures_path.mkdir(exist_ok=True)
             save_image(grid_image, figures_path / f'{self.dataset}_grid.png')
             orig_and_best = torch.cat((self.renormalize(self.img), self.renormalize(best_individual)), dim=3)
             save_image(orig_and_best, figures_path / f'test_{self.metric}.png')
