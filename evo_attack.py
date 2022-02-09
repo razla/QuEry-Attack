@@ -64,6 +64,8 @@ class EvoAttack():
         loss = criterion(individual, self.img)
         return loss
 
+    # test
+
     def compute_fitness(self, pop):
         with torch.no_grad():
             self.fitnesses = []
