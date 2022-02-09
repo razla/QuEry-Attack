@@ -11,7 +11,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
     def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
-                 n_tournament=10, verbose=True, perturbed_pixels=10, epsilon=0.05, reg=0.5, metric='SSIM',
+                 n_tournament=10, verbose=True, perturbed_pixels=30, epsilon=0.1, reg=0.5, metric='SSIM',
                  epsilon_decay=1, steps=500):
         self.model = model
         self.img = img
@@ -115,9 +115,10 @@ class EvoAttack():
 
     def get_best_individual(self):
         if self.targeted_label == None:
-            best_candidate_index = torch.argmin(torch.Tensor(self.fitnesses))
+            best_candidate_index = torch.argmin(self.fitnesses)
+            print(min(self.fitnesses))
         else:
-            best_candidate_index = torch.argmax(torch.Tensor(self.fitnesses))
+            best_candidate_index = torch.argmax(self.fitnesses)
         return self.current_pop[best_candidate_index]
 
     def check_pred(self, individual):
