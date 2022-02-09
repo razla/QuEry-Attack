@@ -2,6 +2,7 @@ import argparse
 import math
 import subprocess
 import sys
+import os
 import torch
 
 from train import load_dataset
@@ -24,11 +25,13 @@ def is_slurm_available():
 def run_attack(local, model_name, i, dataset, metric):
     command = f'{sys.executable} runner.py {model_name} {i} {dataset} {metric}'
     if local or not is_slurm_available():
-        subprocess.run([command], shell=True)
+        subprocess.run(command.split())
     else:
         # TODO monitor the job? report when finished?
-        # TODO request GPUs only on gpu-master ?
-        subprocess.run(['sbatch', '--gpus=1', f'--wrap={command}'])
+        if os.environ['HOSTNAME'] == 'cpu-s-master':
+            subprocess.run(['sbatch', f'--wrap={command}'])
+        else:
+            subprocess.run(['sbatch', '--gpus=1', f'--wrap={command}'])
 
 
 if __name__ == '__main__':
