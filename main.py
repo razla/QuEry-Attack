@@ -11,7 +11,7 @@ dataset = 'cifar10'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 models_names = ['custom', 'densenet121', 'densenet161', 'densenet169', 'googlenet', 'inception_v3']
-metrics = ['l1', 'l2', 'linf', 'SSIM']  # TODO replace l1 with l0
+metrics = ['l0', 'l2', 'linf', 'SSIM']
 
 
 def is_slurm_available():

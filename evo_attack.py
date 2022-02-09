@@ -11,7 +11,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
     def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=1500, pop_size=10,
-                 n_tournament=5, verbose=True, perturbed_pixels=10, epsilon=0.03, reg=0.5, metric='SSIM'):
+                 n_tournament=5, verbose=True, perturbed_pixels=10, epsilon=0.03, reg=0.5, metric='SSIM',
+                 epsilon_decay=1, steps=500):
         self.model = model
         self.img = img
         self.label = label
@@ -26,6 +27,8 @@ class EvoAttack():
         self.epsilon = epsilon
         self.reg = reg
         self.metric = metric
+        self.epsilon_decay = epsilon_decay
+        self.steps = steps
         self.fitnesses = [1 for i in range(pop_size)]
         self.softmax = nn.Softmax(dim=1)
         self.current_pop = [img.clone() for i in range(pop_size)]
@@ -36,6 +39,7 @@ class EvoAttack():
         if self.verbose:
             print("################################")
             print(f'Correct class: {self.label}')
+            print(f'Targeted class: {self.targeted_label}')
             print(f'Initial class prediction: {self.model(img).argmax(dim=1).item()}')
             print(f'Initial probability: {self.softmax(self.model(img)).max():.4f}')
             print("################################")
@@ -43,6 +47,14 @@ class EvoAttack():
     def get_label_prob(self, individual):
         res = self.softmax(self.model(individual))[0][self.label]
         return res
+
+    def get_targeted_label_prob(self, individual):
+        res = self.softmax(self.model(individual))[0][self.targeted_label] - sum(x for i, x in enumerate(self.softmax(self.model(individual))[0]) if not i == self.targeted_label)
+        return res
+
+    def l0_loss(self, individual):
+        loss = sum(individual == self.img)
+        return loss
 
     def l1_loss(self, individual):
         criterion = nn.L1Loss()
@@ -69,30 +81,32 @@ class EvoAttack():
             self.fitnesses = []
             for individual in pop:
                 self.n_queries += 1
+                if (self.n_queries % self.steps == 0):
+                    self.epsilon = self.epsilon * self.epsilon_decay
                 if self.metric == 'SSIM':
-                    if self.logits == True:
+                    if self.targeted_label == None:
                         self.fitnesses.append(self.get_label_prob(individual) - self.reg * self.ssim_loss(individual))
                     else:
                         self.fitnesses.append(
-                            (1 - self.check_pred(individual).item()) - self.reg * self.ssim_loss(individual))
-                elif self.metric == 'l1':
-                    if self.logits == True:
-                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l1_loss(individual))
+                            self.get_targeted_label_prob(individual) - self.reg * self.ssim_loss(individual))
+                elif self.metric == 'l0':
+                    if self.targeted_label == None:
+                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l0_loss(individual))
                     else:
                         self.fitnesses.append(
-                            (1 - self.check_pred(individual).item()) - self.reg * self.l1_loss(individual))
+                            self.get_targeted_label_prob(individual) - self.reg * self.l1_loss(individual))
                 elif self.metric == 'l2':
-                    if self.logits == True:
+                    if self.targeted_label == None:
                         self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l2_loss(individual))
                     else:
                         self.fitnesses.append(
-                            (1 - self.check_pred(individual).item()) - self.reg * self.l2_loss(individual))
+                            self.get_targeted_label_prob(individual) - self.reg * self.l2_loss(individual))
                 elif self.metric == 'linf':
-                    if self.logits == True:
+                    if self.targeted_label == None:
                         self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.linf_loss(individual))
                     else:
                         self.fitnesses.append(
-                            (1 - self.check_pred(individual).item()) - self.reg * self.linf_loss(individual))
+                            self.get_targeted_label_prob(individual) - self.reg * self.linf_loss(individual))
                 else:
                     raise ValueError('No such loss metric!')
                 if (self.check_pred(individual)):
@@ -101,11 +115,18 @@ class EvoAttack():
             return False
 
     def get_best_individual(self):
-        best_candidate_index = torch.argmin(torch.Tensor(self.fitnesses))
+        if self.targeted_label == None:
+            best_candidate_index = torch.argmin(torch.Tensor(self.fitnesses))
+        else:
+            best_candidate_index = torch.argmax(torch.Tensor(self.fitnesses))
         return self.current_pop[best_candidate_index]
 
     def check_pred(self, individual):
-        return self.softmax(self.model(individual)).argmax(dim=1).squeeze() != self.label
+        if self.targeted_label == None:
+            res = self.softmax(self.model(individual)).argmax(dim=1).squeeze() != self.label
+        else:
+            res = self.softmax(self.model(individual)).argmax(dim=1).squeeze() == self.targeted_label
+        return res
 
     def stop_criterion(self):
         if (self.compute_fitness(self.current_pop)):
@@ -144,7 +165,11 @@ class EvoAttack():
     def selection(self):
         tournament = [np.random.randint(0, len(self.current_pop)) for i in range(self.n_tournament)]
         tournament_fitnesses = [self.fitnesses[tournament[i]] for i in range(self.n_tournament)]
-        return self.current_pop[tournament[tournament_fitnesses.index(min(tournament_fitnesses))]].clone()
+        if self.targeted_label == None:
+            res = self.current_pop[tournament[tournament_fitnesses.index(min(tournament_fitnesses))]].clone()
+        else:
+            res = self.current_pop[tournament[tournament_fitnesses.index(max(tournament_fitnesses))]].clone()
+        return res
 
     def crossover(self, individual1, individual2):
         shape = individual1.shape
@@ -193,7 +218,9 @@ class EvoAttack():
                 print("Evolution failed")
                 print(f'Correct class: {self.label}')
                 print(f'Current prediction: {self.model(best_individual).argmax(dim=1).item()}')
-                print(f'Current probability: {self.softmax(self.model(best_individual))[0][self.label].item():.4f}')
+                print(f'Current probability (orig class): {self.softmax(self.model(best_individual))[0][self.label].item():.4f}')
+                print(
+                    f'Current probability (target class): {self.softmax(self.model(best_individual))[0][self.targeted_label].item():.4f}')
                 print("################################")
         else:
             if self.verbose:
@@ -201,7 +228,9 @@ class EvoAttack():
                 print(f'Evolution succeeded in gen #{gen + 1}')
                 print(f'Correct class: {self.label}')
                 print(f'Current prediction: {self.model(best_individual).argmax(dim=1).item()}')
-                print(f'Current probability: {self.softmax(self.model(best_individual))[0][self.label].item():.4f}')
+                print(f'Current probability (orig class): {self.softmax(self.model(best_individual))[0][self.label].item():.4f}')
+                print(
+                    f'Current probability (target class): {self.softmax(self.model(best_individual))[0][self.targeted_label].item():.4f}')
                 l_infinity = torch.norm(self.img - best_individual, p=float('inf')).item()
                 print(f'L infinity: {l_infinity:.4f}')
                 print(f'Number of queries: {self.n_queries}')
