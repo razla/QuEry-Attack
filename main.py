@@ -1,33 +1,62 @@
+import argparse
+import math
+import subprocess
+import sys
 import torch
 
-from evo_attack import EvoAttack
 from train import load_dataset
-from densenet import densenet121, densenet161, densenet169
-from googlenet import googlenet
-from inception import inception_v3
+
+dataset = 'cifar10'
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-models = [densenet121(pretrained=True).to(device),
-          densenet161(pretrained=True).to(device),
-          densenet169(pretrained=True).to(device),
-          googlenet(pretrained=True).to(device),
-          inception_v3(pretrained=True).to(device)]
+models_names = ['custom', 'densenet121', 'densenet161', 'densenet169', 'googlenet', 'inception_v3']
+metrics = ['l1', 'l2', 'linf', 'SSIM']  # TODO replace l1 with l0
+
+
+def is_slurm_available():
+    try:
+        return subprocess.run(['which', 'sbatch'], capture_output=True).returncode == 0
+    except:
+        return False
+
+
+def run_attack(local, model_name, i, dataset, metric):
+    command = f'{sys.executable} runner.py {model_name} {i} {dataset} {metric}'
+    if local or not is_slurm_available():
+        subprocess.run([command], shell=True)
+    else:
+        # TODO monitor the job? report when finished?
+        subprocess.run(['sbatch', f'--wrap={command}'])
+
 
 if __name__ == '__main__':
-    dataset = 'cifar10'
-    # model = torch.load(f'{dataset}_model.pth')
-    # Untrained model
-    train_loader, test_loader = load_dataset(dataset)
+    parser = argparse.ArgumentParser(
+        description="Runs Evolutionary Adversarial Attacks on various Deep Learning models")
+    parser.add_argument("--model", "-m", choices=['ALL'] + models_names, default='custom',
+                        help="Run only specific model, or 'ALL' models")
+    parser.add_argument("--metric", "-t", choices=['ALL'] + metrics, default='ALL',
+                        help="Use only specific metric; or 'ALL' metrics")
+    parser.add_argument("--images", "-i", type=int, default=None,
+                        help="maximal number of images from dataset to process (or None, to process all)")
+    parser.add_argument("--local", "-l", action='store_true',
+                        help='runs on local machine (default: use Slurm if available)')
+    args = parser.parse_args()
+
+    if args.model == 'ALL':
+        models = models_names
+    else:
+        models = [args.model]
+
+    if args.metric != 'ALL':
+        metrics = [args.metric]
+
+    if args.images is None:
+        args.images = math.inf
+
+    train_loader, _ = load_dataset(dataset)
     images, labels = next(iter(train_loader))
-    for i in range(len(images)):
-        img, label = images[i].unsqueeze(dim=0).to(device), labels[i].to(device)
-        for pretrained in models:
-            model = pretrained
-            model.eval()
-            evo_attack = EvoAttack(model, img, label, dataset, metric='l1')
-            evolution = evo_attack.evolve()
-            evo_attack = EvoAttack(model, img, label, dataset, metric='l2')
-            evolution = evo_attack.evolve()
-            evo_attack = EvoAttack(model, img, label, dataset, metric='linf')
-            evolution = evo_attack.evolve()
+    for i in range(min(len(images), args.images)):
+        for model in models:
+            for metric in metrics:
+                run_attack(args.local, model, i, dataset, metric=metric)
