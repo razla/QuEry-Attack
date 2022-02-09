@@ -10,8 +10,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class EvoAttack():
-    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=1500, pop_size=10,
-                 n_tournament=5, verbose=True, perturbed_pixels=10, epsilon=0.03, reg=0.5, metric='SSIM',
+    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
+                 n_tournament=10, verbose=True, perturbed_pixels=10, epsilon=0.05, reg=0.5, metric='SSIM',
                  epsilon_decay=1, steps=500):
         self.model = model
         self.img = img
@@ -29,7 +29,7 @@ class EvoAttack():
         self.metric = metric
         self.epsilon_decay = epsilon_decay
         self.steps = steps
-        self.fitnesses = [1 for i in range(pop_size)]
+        self.fitnesses = torch.zeros(pop_size)
         self.softmax = nn.Softmax(dim=1)
         self.current_pop = [img.clone() for i in range(pop_size)]
         self.n_queries = 0
@@ -53,7 +53,10 @@ class EvoAttack():
         return res
 
     def l0_loss(self, individual):
-        loss = sum(individual == self.img)
+        flattened_ind = individual.flatten()
+        flattened_img = self.img.flatten()
+        length = len(flattened_ind)
+        loss = length - sum(torch.isclose(flattened_ind, flattened_img))
         return loss
 
     def l1_loss(self, individual):
@@ -78,35 +81,31 @@ class EvoAttack():
 
     def compute_fitness(self, pop):
         with torch.no_grad():
-            self.fitnesses = []
-            for individual in pop:
+            self.fitnesses = torch.zeros(self.pop_size)
+            for i, individual in enumerate(pop):
                 self.n_queries += 1
                 if (self.n_queries % self.steps == 0):
                     self.epsilon = self.epsilon * self.epsilon_decay
                 if self.metric == 'SSIM':
                     if self.targeted_label == None:
-                        self.fitnesses.append(self.get_label_prob(individual) - self.reg * self.ssim_loss(individual))
+                        self.fitnesses[i] = self.get_label_prob(individual) - self.reg * self.ssim_loss(individual)
                     else:
-                        self.fitnesses.append(
-                            self.get_targeted_label_prob(individual) - self.reg * self.ssim_loss(individual))
+                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.ssim_loss(individual)
                 elif self.metric == 'l0':
                     if self.targeted_label == None:
-                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l0_loss(individual))
+                        self.fitnesses[i] = self.get_label_prob(individual) + self.reg * self.l0_loss(individual)
                     else:
-                        self.fitnesses.append(
-                            self.get_targeted_label_prob(individual) - self.reg * self.l1_loss(individual))
+                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.l1_loss(individual)
                 elif self.metric == 'l2':
                     if self.targeted_label == None:
-                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.l2_loss(individual))
+                        self.fitnesses[i] = self.get_label_prob(individual) + self.reg * self.l2_loss(individual)
                     else:
-                        self.fitnesses.append(
-                            self.get_targeted_label_prob(individual) - self.reg * self.l2_loss(individual))
+                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.l2_loss(individual)
                 elif self.metric == 'linf':
                     if self.targeted_label == None:
-                        self.fitnesses.append(self.get_label_prob(individual) + self.reg * self.linf_loss(individual))
+                        self.fitnesses[i] = self.get_label_prob(individual) + self.reg * self.linf_loss(individual)
                     else:
-                        self.fitnesses.append(
-                            self.get_targeted_label_prob(individual) - self.reg * self.linf_loss(individual))
+                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.linf_loss(individual)
                 else:
                     raise ValueError('No such loss metric!')
                 if (self.check_pred(individual)):
@@ -219,8 +218,9 @@ class EvoAttack():
                 print(f'Correct class: {self.label}')
                 print(f'Current prediction: {self.model(best_individual).argmax(dim=1).item()}')
                 print(f'Current probability (orig class): {self.softmax(self.model(best_individual))[0][self.label].item():.4f}')
-                print(
-                    f'Current probability (target class): {self.softmax(self.model(best_individual))[0][self.targeted_label].item():.4f}')
+                if self.targeted_label:
+                    print(
+                        f'Current probability (target class): {self.softmax(self.model(best_individual))[0][self.targeted_label].item():.4f}')
                 print("################################")
         else:
             if self.verbose:
@@ -229,8 +229,9 @@ class EvoAttack():
                 print(f'Correct class: {self.label}')
                 print(f'Current prediction: {self.model(best_individual).argmax(dim=1).item()}')
                 print(f'Current probability (orig class): {self.softmax(self.model(best_individual))[0][self.label].item():.4f}')
-                print(
-                    f'Current probability (target class): {self.softmax(self.model(best_individual))[0][self.targeted_label].item():.4f}')
+                if self.targeted_label:
+                    print(
+                        f'Current probability (target class): {self.softmax(self.model(best_individual))[0][self.targeted_label].item():.4f}')
                 l_infinity = torch.norm(self.img - best_individual, p=float('inf')).item()
                 print(f'L infinity: {l_infinity:.4f}')
                 print(f'Number of queries: {self.n_queries}')
