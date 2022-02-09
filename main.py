@@ -27,7 +27,8 @@ def run_attack(local, model_name, i, dataset, metric):
         subprocess.run([command], shell=True)
     else:
         # TODO monitor the job? report when finished?
-        subprocess.run(['sbatch', f'--wrap={command}'])
+        # TODO request GPUs only on gpu-master ?
+        subprocess.run(['sbatch', '--gpus=1', f'--wrap={command}'])
 
 
 if __name__ == '__main__':

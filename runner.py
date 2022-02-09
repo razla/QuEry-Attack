@@ -6,6 +6,7 @@ from train import load_dataset
 from evo_attack import EvoAttack
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f"Running on {device}")
 
 
 def get_model(model_name, dataset):
