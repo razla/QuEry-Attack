@@ -5,13 +5,14 @@ import numpy as np
 import torch
 from piqa import SSIM
 from pathlib import Path
+import random
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class EvoAttack():
-    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
-                 n_tournament=10, verbose=True, perturbed_pixels=30, epsilon=0.1, reg=0.5, metric='SSIM',
+    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=2000, pop_size=10,
+                 n_tournament=4, verbose=True, perturbed_pixels=50, epsilon=0.05, alpha=1, beta=1, metric='SSIM',
                  epsilon_decay=1, steps=500):
         self.model = model
         self.img = img
@@ -25,7 +26,8 @@ class EvoAttack():
         self.verbose = verbose
         self.perturbed_pixels = perturbed_pixels
         self.epsilon = epsilon
-        self.reg = reg
+        self.alpha = alpha
+        self.beta = beta
         self.metric = metric
         self.epsilon_decay = epsilon_decay
         self.steps = steps
@@ -33,6 +35,7 @@ class EvoAttack():
         self.softmax = nn.Softmax(dim=1)
         self.current_pop = [img.clone() for i in range(pop_size)]
         self.n_queries = 0
+        self.best_individual = None
 
         self.best_attacks = []
 
@@ -88,33 +91,36 @@ class EvoAttack():
                     self.epsilon = self.epsilon * self.epsilon_decay
                 if self.metric == 'SSIM':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.get_label_prob(individual) - self.reg * self.ssim_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) - self.beta * self.ssim_loss(individual)
                     else:
-                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.ssim_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.ssim_loss(individual)
                 elif self.metric == 'l0':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.get_label_prob(individual) + self.reg * self.l0_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l0_loss(individual)
                     else:
-                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.l1_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l1_loss(individual)
                 elif self.metric == 'l2':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.get_label_prob(individual) + self.reg * self.l2_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual)
                     else:
-                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.l2_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l2_loss(individual)
                 elif self.metric == 'linf':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.get_label_prob(individual) + self.reg * self.linf_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.linf_loss(individual)
                     else:
-                        self.fitnesses[i] = self.get_targeted_label_prob(individual) - self.reg * self.linf_loss(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.linf_loss(individual)
                 else:
                     raise ValueError('No such loss metric!')
                 if (self.check_pred(individual)):
+                    self.best_individual = individual.clone()
                     return True
 
             return False
 
     def get_best_individual(self):
-        if self.targeted_label == None:
+        if self.best_individual != None:
+            return self.best_individual
+        elif self.targeted_label == None:
             best_candidate_index = torch.argmin(self.fitnesses)
             print(min(self.fitnesses))
         else:
@@ -211,7 +217,7 @@ class EvoAttack():
             figures_path.mkdir(exist_ok=True)
             save_image(grid_image, figures_path / f'{self.dataset}_grid.png')
             orig_and_best = torch.cat((self.renormalize(self.img), self.renormalize(best_individual)), dim=3)
-            save_image(orig_and_best, figures_path / f'test_{self.metric}.png')
+            save_image(orig_and_best, figures_path / f'test_{self.metric}_{random.randrange(0,400)}.png')
         if not self.stop_criterion():
             if self.verbose:
                 print("################################")
