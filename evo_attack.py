@@ -9,11 +9,10 @@ import random
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
 class EvoAttack():
-    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=2000, pop_size=10,
-                 n_tournament=4, verbose=True, perturbed_pixels=50, epsilon=0.05, alpha=1, beta=1, metric='SSIM',
-                 epsilon_decay=1, steps=500):
+    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=400, pop_size=50,
+                 n_tournament=5, verbose=True, perturbed_pixels=100, epsilon=0.2, alpha=1, beta=2, metric='SSIM',
+                 epsilon_decay=1, steps=500, kernel_size=5, delta=0.2):
         self.model = model
         self.img = img
         self.label = label
@@ -31,12 +30,15 @@ class EvoAttack():
         self.metric = metric
         self.epsilon_decay = epsilon_decay
         self.steps = steps
+        self.kernel_size = kernel_size
+        self.delta = delta
         self.fitnesses = torch.zeros(pop_size)
         self.softmax = nn.Softmax(dim=1)
         self.current_pop = [img.clone() for i in range(pop_size)]
         self.n_queries = 0
         self.best_individual = None
-
+        self.min_ball = torch.tile(torch.maximum(self.img[0] - delta, torch.min(self.img)), (1, 1))
+        self.max_ball = torch.tile(torch.minimum(self.img[0] + delta, torch.max(self.img)), (1, 1))
         self.best_attacks = []
 
         if self.verbose:
@@ -48,7 +50,7 @@ class EvoAttack():
             print("################################")
 
     def get_label_prob(self, individual):
-        res = self.softmax(self.model(individual))[0][self.label]
+        res = self.softmax(self.model(individual))[0][self.label] - sum(x for i, x in enumerate(self.softmax(self.model(individual))[0]) if not i == self.label)
         return res
 
     def get_targeted_label_prob(self, individual):
@@ -122,7 +124,7 @@ class EvoAttack():
             return self.best_individual
         elif self.targeted_label == None:
             best_candidate_index = torch.argmin(self.fitnesses)
-            print(min(self.fitnesses))
+            # print(min(self.fitnesses))
         else:
             best_candidate_index = torch.argmax(self.fitnesses)
         return self.current_pop[best_candidate_index]
@@ -138,6 +140,21 @@ class EvoAttack():
         if (self.compute_fitness(self.current_pop)):
             return True
         return False
+
+    def local_mutate(self, individual):
+        shape = individual.shape
+        for pertube in range(self.perturbed_pixels):
+            for channel in range(shape[1]):
+                i = np.random.randint(0 + self.kernel_size, shape[2] - self.kernel_size)
+                j = np.random.randint(0 + self.kernel_size, shape[3] - self.kernel_size)
+                current_pixel = individual[0][channel][i][j].cpu()
+                # local_pertube = torch.tensor(np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon, (self.kernel_size, self.kernel_size)))
+                local_pertube = torch.tensor(np.random.uniform(current_pixel, self.epsilon, (self.kernel_size, self.kernel_size))).cuda()
+                individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
+
+                individual[0][channel] = torch.clip(individual[0][channel], self.min_ball[channel], self.max_ball[channel])
+        return individual.to(device)
+
 
     def mutate(self, individual):
         shape = individual.shape
@@ -166,6 +183,10 @@ class EvoAttack():
                                                                                                         shape[3])
         individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
+        individual1[0][channel] = torch.clip(individual1[0][channel], self.min_ball[channel], self.max_ball[channel])
+
+        individual2[0][channel] = torch.clip(individual2[0][channel], self.min_ball[channel], self.max_ball[channel])
+
         return individual1, individual2
 
     def selection(self):
@@ -191,7 +212,8 @@ class EvoAttack():
             parent1 = self.selection()
             parent2 = self.selection()
             offspring1, offspring1 = self.crossover(parent1, parent2)
-            offspring1 = self.mutate(offspring1)
+            # offspring1 = self.mutate(offspring1)
+            offspring1 = self.local_mutate(offspring1)
             new_gen.append(offspring1)
         self.current_pop = new_gen
 
@@ -206,16 +228,17 @@ class EvoAttack():
     def evolve(self):
         gen = 0
         while gen < self.n_gen and not self.stop_criterion():
+            print(self.fitnesses)
             if gen % 5 == 0:
                 self.best_attacks.append(self.get_best_individual()[0])
             self.evolve_new_gen()
             gen += 1
         best_individual = self.get_best_individual()
         if self.best_attacks != []:
-            grid_image = make_grid(self.best_attacks)
+            # grid_image = make_grid(self.best_attacks)
             figures_path = Path('figures')
             figures_path.mkdir(exist_ok=True)
-            save_image(grid_image, figures_path / f'{self.dataset}_grid.png')
+            # save_image(grid_image, figures_path / f'{self.dataset}_grid.png')
             orig_and_best = torch.cat((self.renormalize(self.img), self.renormalize(best_individual)), dim=3)
             save_image(orig_and_best, figures_path / f'test_{self.metric}_{random.randrange(0,400)}.png')
         if not self.stop_criterion():
