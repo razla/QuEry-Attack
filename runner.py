@@ -8,7 +8,6 @@ from evo_attack import EvoAttack
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 
-
 def get_model(model_name, dataset):
     if model_name == 'custom':
         return torch.load(Path('models') / f'{dataset}_model.pth', map_location=torch.device(device))
