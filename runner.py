@@ -36,4 +36,4 @@ if __name__ == '__main__':
     print(f"Running attack on {args.model_name} model with metric: {args.metric}, image #{args.i}")
     print("============================")
 
-    EvoAttack(model, img, label, args.dataset, metric=args.metric).evolve()
+    EvoAttack(model, img, label, metric=args.metric).evolve()

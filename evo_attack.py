@@ -6,17 +6,17 @@ import torch
 from piqa import SSIM
 from pathlib import Path
 import random
+from copy import deepcopy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
-    def __init__(self, model, img, label, dataset, targeted_label=None, logits=True, n_gen=500, pop_size=40,
-                 n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, metric='SSIM',
-                 epsilon_decay=1, steps=500, kernel_size=5, delta=0.2):
+    def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
+                 n_tournament=2, verbose=True, perturbed_pixels=2, epsilon=1, alpha=1, beta=1, gamma=2, metric='SSIM',
+                 epsilon_decay=1, steps=500, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
         self.label = label
-        self.dataset = dataset
         self.targeted_label = targeted_label
         self.logits = logits
         self.n_gen = n_gen
@@ -27,6 +27,7 @@ class EvoAttack():
         self.epsilon = epsilon
         self.alpha = alpha
         self.beta = beta
+        self.gamma = gamma
         self.metric = metric
         self.epsilon_decay = epsilon_decay
         self.steps = steps
@@ -34,7 +35,7 @@ class EvoAttack():
         self.delta = delta
         self.fitnesses = torch.zeros(pop_size)
         self.softmax = nn.Softmax(dim=1)
-        self.current_pop = [img.clone() for i in range(pop_size)]
+        self.current_pop = [self.img.clone() for i in range(pop_size)]
         self.n_queries = 0
         self.best_individual = None
         self.min_ball = torch.tile(torch.maximum(self.img[0] - delta, torch.min(self.img)), (1, 1))
@@ -45,7 +46,7 @@ class EvoAttack():
             print("################################")
             print(f'Correct class: {self.label}')
             print(f'Targeted class: {self.targeted_label}')
-            print(f'Initial class prediction: {self.model(img).argmax(dim=1).item()}')
+            print(f'Initial class prediction: {self.model(self.img).argmax(dim=1).item()}')
             print(f'Initial probability: {self.softmax(self.model(img)).max():.4f}')
             print("################################")
 
@@ -98,19 +99,19 @@ class EvoAttack():
                         self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.ssim_loss(individual)
                 elif self.metric == 'l0':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l0_loss(individual) - self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l0_loss(individual) - self.gamma * self.ind_diversity(individual)
                     else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l1_loss(individual) + self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l1_loss(individual) + self.gamma * self.ind_diversity(individual)
                 elif self.metric == 'l2':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual) - self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual) - self.gamma * self.ind_diversity(individual)
                     else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l2_loss(individual) + self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l2_loss(individual) + self.gamma * self.ind_diversity(individual)
                 elif self.metric == 'linf':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.linf_loss(individual) - self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.linf_loss(individual) - self.gamma * self.ind_diversity(individual)
                     else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.linf_loss(individual) + self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.linf_loss(individual) + self.gamma * self.ind_diversity(individual)
                 else:
                     raise ValueError('No such loss metric!')
                 if (self.check_pred(individual)):
@@ -228,7 +229,7 @@ class EvoAttack():
         diversity = 0
         for other in self.current_pop:
             diversity += torch.sum(abs(individual - other)) / individual.flatten().shape[0]
-        diversity /= (len(self.current_pop))
+        # diversity /= (len(self.current_pop))
         return diversity
 
     def compute_whole_diversity(self):
@@ -236,14 +237,22 @@ class EvoAttack():
         for ind1 in self.current_pop:
             for ind2 in self.current_pop:
                 diversity += torch.sum(abs(ind1 - ind2)) / ind1.flatten().shape[0]
-        diversity /= (len(self.current_pop) ** 2)
+        # diversity /= (len(self.current_pop) ** 2)
         return diversity
+
+    def generate(self, x):
+        x_adv = []
+        for img in x:
+            self.img = img
+            self.evolve()
+            x_adv.append(self.get_best_individual())
+        return x_adv
 
     def evolve(self):
         gen = 0
         while gen < self.n_gen and not self.stop_criterion():
             # print(f'Fitnesses: {self.fitnesses}')
-            print(f'Diversity gen #{gen}: {self.compute_whole_diversity()}')
+            # print(f'Diversity gen #{gen}: {self.compute_whole_diversity()}')
             if gen % 5 == 0:
                 self.best_attacks.append(self.get_best_individual()[0])
             self.evolve_new_gen()
@@ -253,8 +262,8 @@ class EvoAttack():
             # grid_image = make_grid(self.best_attacks)
             figures_path = Path('figures')
             figures_path.mkdir(exist_ok=True)
-            # save_image(grid_image, figures_path / f'{self.dataset}_grid.png')
-            orig_and_best = torch.cat((self.renormalize(self.img), self.renormalize(best_individual)), dim=3)
+            # orig_and_best = torch.cat((self.renormalize(self.img), self.renormalize(best_individual)), dim=3)
+            orig_and_best = torch.cat((self.img, best_individual), dim=3)
             save_image(orig_and_best, figures_path / f'test_{self.metric}_{random.randrange(0,400)}.png')
         if not self.stop_criterion():
             if self.verbose:
@@ -281,3 +290,4 @@ class EvoAttack():
                 print(f'L infinity: {l_infinity:.4f}')
                 print(f'Number of queries: {self.n_queries}')
                 print("################################")
+        return best_individual
