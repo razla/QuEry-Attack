@@ -179,10 +179,10 @@ class EvoAttack():
         crossover_idx = i * shape[2] + j
         flattened_ind1 = individual1[0][channel].flatten()
         flattened_ind2 = individual2[0][channel].flatten()
-        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[: crossover_idx].shape))).to(device)
-        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[: crossover_idx].shape))).to(device)
-        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[crossover_idx:].shape))).to(device)
-        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[crossover_idx:].shape))).to(device)
+        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[: crossover_idx].shape))).to(device)
+        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[: crossover_idx].shape))).to(device)
+        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[crossover_idx:].shape))).to(device)
+        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[crossover_idx:].shape))).to(device)
         individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
         individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
