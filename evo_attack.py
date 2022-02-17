@@ -12,7 +12,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
     def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=200, pop_size=100,
-                 n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='SSIM',
+                 n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='linf',
                  epsilon_decay=0.1, steps=400, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
@@ -159,6 +159,23 @@ class EvoAttack():
                 individual[0][channel] = torch.clip(individual[0][channel], self.min_ball[channel], self.max_ball[channel])
         return individual.to(device)
 
+    def new_local_mutate(self, individual):
+        shape = individual.shape
+        for channel in range(shape[1]):
+            for i in range(self.kernel_size, shape[2] - self.kernel_size):
+                for j in range(self.kernel_size, shape[3] - self.kernel_size):
+                    if random.uniform(0, 1) > 0.5:
+                        current_pixel = individual[0][channel][i][j].cpu()
+                        # local_pertube = torch.tensor(np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon, (self.kernel_size, self.kernel_size)))
+                        local_pertube = torch.tensor(
+                            np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).cuda()
+                        individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
+
+        individual[0] = torch.clip(individual[0], self.min_ball,
+                                            self.max_ball)
+        return individual.to(device)
+
+
 
     def mutate(self, individual):
         shape = individual.shape
@@ -217,8 +234,9 @@ class EvoAttack():
             parent2 = self.selection()
             offspring1, offspring2 = self.crossover(parent1, parent2)
             # offspring1 = self.mutate(offspring1)
-            offspring1 = self.local_mutate(offspring1)
             # offspring2 = self.local_mutate(offspring2)
+            offspring1 = self.local_mutate(offspring1)
+            # offspring1 = self.new_local_mutate(offspring1)
             new_gen.append(offspring1)
             new_gen.append(offspring2)
         self.current_pop = new_gen

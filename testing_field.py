@@ -47,12 +47,12 @@ if __name__ == '__main__':
     if args.model == 'ALL':
         models = models_names
     else:
-        models = [args.model]
+        models = args.model
 
     if args.dataset =='ALL':
         datasets = datasets_names
     else:
-        dataset = [args.dataset]
+        datasets = args.dataset
 
     if args.metric != 'ALL':
         metrics = [args.metric]
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     if args.images is None:
         args.images = math.inf
 
-    (x_train, y_train), (x_test, y_test), min_pixel_value, max_pixel_value = load_data(dataset)
+    (x_train, y_train), (x_test, y_test), min_pixel_value, max_pixel_value = load_data(datasets)
 
     x_train = np.transpose(x_train, (0, 3, 1, 2)).astype(np.float32)
     x_test = np.transpose(x_test, (0, 3, 1, 2)).astype(np.float32)
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     x_test = x_test[:20]
     y_test = y_test[:20]
 
-    model = get_model('custom', 'cifar10')
+    model = get_model(models, datasets)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.01)
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     print("Create DeepFool attack")
     adv_crafter = DeepFool(classifier)
     print("Craft attack on training examples")
-    x_train_adv = adv_crafter.generate(x_train[:250])
+    x_train_adv = adv_crafter.generate(x_train[:5])
     print("Craft attack test examples")
     x_test_adv = adv_crafter.generate(x_test)
 
@@ -119,11 +119,11 @@ if __name__ == '__main__':
     # Step 6: Generate adversarial test examples
     # zoo_attack = ZooAttack(classifier=classifier)
     # ftr_adv_attack = FeatureAdversariesPyTorch(estimator=classifier, step_size=0.1, delta=0.2)
-    univ_attack = UniversalPerturbation(classifier=classifier, norm='inf', eps=0.2)
+    univ_attack = UniversalPerturbation(classifier=classifier, norm='inf', eps=0.15)
     for i, (x, y) in enumerate(zip(x_test, y_test)):
         x = torch.from_numpy(x).unsqueeze(dim=0).to(device)
         y = torch.tensor(np.argmax(y)).to(device)
-        adv = EvoAttack(model=model, img=x, label=y, metric='linf', delta=0.2, perturbed_pixels=1,
+        adv = EvoAttack(model=model, img=x, label=y, metric='linf', delta=0.15, perturbed_pixels=1,
                         kernel_size=3).evolve().cpu().numpy()
         if i == 0:
             evo_x_test_adv = adv
