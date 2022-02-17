@@ -11,9 +11,9 @@ from copy import deepcopy
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
-    def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
-                 n_tournament=2, verbose=True, perturbed_pixels=2, epsilon=1, alpha=1, beta=1, gamma=2, metric='SSIM',
-                 epsilon_decay=1, steps=500, kernel_size=5, delta=0.3):
+    def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=200, pop_size=100,
+                 n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='SSIM',
+                 epsilon_decay=0.1, steps=400, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
         self.label = label
@@ -35,11 +35,11 @@ class EvoAttack():
         self.delta = delta
         self.fitnesses = torch.zeros(pop_size)
         self.softmax = nn.Softmax(dim=1)
-        self.current_pop = [self.img.clone() for i in range(pop_size)]
-        self.n_queries = 0
-        self.best_individual = None
         self.min_ball = torch.tile(torch.maximum(self.img[0] - delta, torch.min(self.img)), (1, 1))
         self.max_ball = torch.tile(torch.minimum(self.img[0] + delta, torch.max(self.img)), (1, 1))
+        self.current_pop = [self.local_mutate(self.img.clone()) for i in range(pop_size)]
+        self.n_queries = 0
+        self.best_individual = None
         self.best_attacks = []
 
         if self.verbose:
@@ -85,13 +85,15 @@ class EvoAttack():
         loss = criterion(individual, self.img)
         return loss
 
+# TODO: 1/1+self.ind_diversity
+
     def compute_fitness(self, pop):
         with torch.no_grad():
             self.fitnesses = torch.zeros(self.pop_size)
             for i, individual in enumerate(pop):
                 self.n_queries += 1
                 if (self.n_queries % self.steps == 0):
-                    self.epsilon = self.epsilon * self.epsilon_decay
+                    self.perturbed_pixels += 1
                 if self.metric == 'SSIM':
                     if self.targeted_label == None:
                         self.fitnesses[i] = self.alpha * self.get_label_prob(individual) - self.beta * self.ssim_loss(individual)
@@ -99,19 +101,19 @@ class EvoAttack():
                         self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.ssim_loss(individual)
                 elif self.metric == 'l0':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l0_loss(individual) - self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l0_loss(individual) + self.gamma * self.ind_diversity(individual)
                     else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l1_loss(individual) + self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l1_loss(individual) - self.gamma * self.ind_diversity(individual)
                 elif self.metric == 'l2':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual) - self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual) + self.gamma * self.ind_diversity(individual)
                     else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l2_loss(individual) + self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l2_loss(individual) - self.gamma * self.ind_diversity(individual)
                 elif self.metric == 'linf':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.linf_loss(individual) - self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.linf_loss(individual) + self.gamma * self.ind_diversity(individual)
                     else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.linf_loss(individual) + self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.linf_loss(individual) - self.gamma * self.ind_diversity(individual)
                 else:
                     raise ValueError('No such loss metric!')
                 if (self.check_pred(individual)):
@@ -138,6 +140,8 @@ class EvoAttack():
 
     def stop_criterion(self):
         if (self.compute_fitness(self.current_pop)):
+            diversity = self.compute_whole_diversity()
+            print(f'Diversity stop criterion: {diversity}')
             return True
         return False
 
@@ -149,7 +153,7 @@ class EvoAttack():
                 j = np.random.randint(0 + self.kernel_size, shape[3] - self.kernel_size)
                 current_pixel = individual[0][channel][i][j].cpu()
                 # local_pertube = torch.tensor(np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon, (self.kernel_size, self.kernel_size)))
-                local_pertube = torch.tensor(np.random.uniform(current_pixel, self.epsilon, (self.kernel_size, self.kernel_size))).cuda()
+                local_pertube = torch.tensor(np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).cuda()
                 individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
 
                 individual[0][channel] = torch.clip(individual[0][channel], self.min_ball[channel], self.max_ball[channel])
@@ -175,10 +179,10 @@ class EvoAttack():
         crossover_idx = i * shape[2] + j
         flattened_ind1 = individual1[0][channel].flatten()
         flattened_ind2 = individual2[0][channel].flatten()
-        flattened_ind1_prefix = flattened_ind1[: crossover_idx]
-        flattened_ind2_prefix = flattened_ind2[: crossover_idx]
-        flattened_ind1_suffix = flattened_ind1[crossover_idx:]
-        flattened_ind2_suffix = flattened_ind2[crossover_idx:]
+        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[: crossover_idx].shape))).to(device)
+        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[: crossover_idx].shape))).to(device)
+        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[crossover_idx:].shape))).to(device)
+        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[crossover_idx:].shape))).to(device)
         individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
         individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
@@ -208,13 +212,15 @@ class EvoAttack():
 
     def evolve_new_gen(self):
         new_gen = []
-        for i in range(self.pop_size):
+        for i in range(self.pop_size // 2):
             parent1 = self.selection()
             parent2 = self.selection()
-            offspring1, offspring1 = self.crossover(parent1, parent2)
+            offspring1, offspring2 = self.crossover(parent1, parent2)
             # offspring1 = self.mutate(offspring1)
             offspring1 = self.local_mutate(offspring1)
+            # offspring2 = self.local_mutate(offspring2)
             new_gen.append(offspring1)
+            new_gen.append(offspring2)
         self.current_pop = new_gen
 
     def renormalize(self, tensor):
@@ -228,32 +234,37 @@ class EvoAttack():
     def ind_diversity(self, individual):
         diversity = 0
         for other in self.current_pop:
-            diversity += torch.sum(abs(individual - other)) / individual.flatten().shape[0]
-        # diversity /= (len(self.current_pop))
+            diversity += torch.sum(abs(individual - other)) #/ individual.flatten().shape[0]
+        diversity = 1 / (1 + diversity)
         return diversity
 
     def compute_whole_diversity(self):
         diversity = 0
         for ind1 in self.current_pop:
             for ind2 in self.current_pop:
-                diversity += torch.sum(abs(ind1 - ind2)) / ind1.flatten().shape[0]
-        # diversity /= (len(self.current_pop) ** 2)
+                diversity += torch.sum(abs(ind1 - ind2)) #/ ind1.flatten().shape[0]
+        diversity = 1 / (1 + diversity)
         return diversity
-
-    def generate(self, x):
-        x_adv = []
-        for img in x:
-            self.img = img
-            self.evolve()
-            x_adv.append(self.get_best_individual())
-        return x_adv
 
     def evolve(self):
         gen = 0
+        i = 0
+        best_diversity = 0
         while gen < self.n_gen and not self.stop_criterion():
             # print(f'Fitnesses: {self.fitnesses}')
-            # print(f'Diversity gen #{gen}: {self.compute_whole_diversity()}')
+            diversity = self.compute_whole_diversity()
+
+            if diversity > best_diversity:
+                best_diversity = diversity
+            else:
+                i += 1
+
+            # if i % 10 == 0:
+            #     self.current_pop = [self.img.clone() for i in range(self.pop_size)]
+            #     best_diversity = 0
+
             if gen % 5 == 0:
+                # print(f'Diversity gen #{gen}: {diversity}')
                 self.best_attacks.append(self.get_best_individual()[0])
             self.evolve_new_gen()
             gen += 1

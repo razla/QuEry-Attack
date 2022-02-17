@@ -14,7 +14,6 @@ def get_model(model_name, dataset):
     else:
         return globals()[model_name](pretrained=True).to(device)
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Shouldn't be directly run! use 'main.py' instead")
     parser.add_argument("model_name")
