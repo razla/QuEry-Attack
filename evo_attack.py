@@ -1,4 +1,4 @@
-from torchvision.utils import save_image, make_grid
+from torchvision.utils import save_image
 from torchvision import transforms
 import torch.nn as nn
 import numpy as np
@@ -6,14 +6,13 @@ import torch
 from piqa import SSIM
 from pathlib import Path
 import random
-from copy import deepcopy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
     def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=200, pop_size=100,
                  n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='linf',
-                 epsilon_decay=0.1, steps=400, kernel_size=5, delta=0.3):
+                 epsilon_decay=0.5, steps=400, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
         self.label = label
@@ -94,6 +93,7 @@ class EvoAttack():
                 self.n_queries += 1
                 if (self.n_queries % self.steps == 0):
                     self.perturbed_pixels += 1
+                    self.epsilon *= self.epsilon
                 if self.metric == 'SSIM':
                     if self.targeted_label == None:
                         self.fitnesses[i] = self.alpha * self.get_label_prob(individual) - self.beta * self.ssim_loss(individual)
@@ -196,10 +196,10 @@ class EvoAttack():
         crossover_idx = i * shape[2] + j
         flattened_ind1 = individual1[0][channel].flatten()
         flattened_ind2 = individual2[0][channel].flatten()
-        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[: crossover_idx].shape))).to(device)
-        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[: crossover_idx].shape))).to(device)
-        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[crossover_idx:].shape))).to(device)
-        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + self.delta #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[crossover_idx:].shape))).to(device)
+        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[: crossover_idx].shape))).to(device)
+        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[: crossover_idx].shape))).to(device)
+        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[crossover_idx:].shape))).to(device)
+        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[crossover_idx:].shape))).to(device)
         individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
         individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
@@ -319,4 +319,4 @@ class EvoAttack():
                 print(f'L infinity: {l_infinity:.4f}')
                 print(f'Number of queries: {self.n_queries}')
                 print("################################")
-        return best_individual
+        return best_individual, self.n_queries
