@@ -12,7 +12,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 class EvoAttack():
     def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=200, pop_size=100,
                  n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='linf',
-                 epsilon_decay=0.5, steps=400, kernel_size=5, delta=0.3):
+                 epsilon_decay=0.99, steps=400, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
         self.label = label
@@ -40,6 +40,7 @@ class EvoAttack():
         self.n_queries = 0
         self.best_individual = None
         self.best_attacks = []
+        self.stop = False
 
         if self.verbose:
             print("################################")
@@ -142,6 +143,7 @@ class EvoAttack():
         if (self.compute_fitness(self.current_pop)):
             diversity = self.compute_whole_diversity()
             print(f'Diversity stop criterion: {diversity}')
+            self.stop = True
             return True
         return False
 
@@ -319,4 +321,4 @@ class EvoAttack():
                 print(f'L infinity: {l_infinity:.4f}')
                 print(f'Number of queries: {self.n_queries}')
                 print("################################")
-        return best_individual, self.n_queries
+        return best_individual, self.n_queries, self.stop

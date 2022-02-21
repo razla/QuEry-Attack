@@ -6,6 +6,7 @@ from train import load_dataset
 from evo_attack import EvoAttack
 from densenet import densenet121, densenet161, densenet169
 from resnet import resnet18
+from googlenet import googlenet
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
