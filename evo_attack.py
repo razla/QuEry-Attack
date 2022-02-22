@@ -10,12 +10,14 @@ import random
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
-    def __init__(self, model, img, label, targeted_label=None, logits=True, n_gen=200, pop_size=100,
+    def __init__(self, model, img, label, min_pixel, max_pixel, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
                  n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='linf',
                  epsilon_decay=0.99, steps=400, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
         self.label = label
+        self.min_pixel = min_pixel
+        self.max_pixel = max_pixel
         self.targeted_label = targeted_label
         self.logits = logits
         self.n_gen = n_gen
@@ -34,8 +36,8 @@ class EvoAttack():
         self.delta = delta
         self.fitnesses = torch.zeros(pop_size)
         self.softmax = nn.Softmax(dim=1)
-        self.min_ball = torch.tile(torch.maximum(self.img[0] - delta, torch.min(self.img)), (1, 1))
-        self.max_ball = torch.tile(torch.minimum(self.img[0] + delta, torch.max(self.img)), (1, 1))
+        self.min_ball = torch.tile(torch.maximum(self.img - delta, self.min_pixel), (1, 1))
+        self.max_ball = torch.tile(torch.minimum(self.img + delta, self.max_pixel), (1, 1))
         self.current_pop = [self.local_mutate(self.img.clone()) for i in range(pop_size)]
         self.n_queries = 0
         self.best_individual = None
@@ -154,11 +156,10 @@ class EvoAttack():
                 i = np.random.randint(0 + self.kernel_size, shape[2] - self.kernel_size)
                 j = np.random.randint(0 + self.kernel_size, shape[3] - self.kernel_size)
                 current_pixel = individual[0][channel][i][j].cpu()
-                # local_pertube = torch.tensor(np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon, (self.kernel_size, self.kernel_size)))
-                local_pertube = torch.tensor(np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).cuda()
+                local_pertube = torch.tensor(np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).to(device)
                 individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
 
-                individual[0][channel] = torch.clip(individual[0][channel], self.min_ball[channel], self.max_ball[channel])
+                individual[0][channel] = torch.clip(individual[0][channel], self.min_ball[0][channel], self.max_ball[0][channel])
         return individual.to(device)
 
     def new_local_mutate(self, individual):
@@ -168,9 +169,8 @@ class EvoAttack():
                 for j in range(self.kernel_size, shape[3] - self.kernel_size):
                     if random.uniform(0, 1) > 0.5:
                         current_pixel = individual[0][channel][i][j].cpu()
-                        # local_pertube = torch.tensor(np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon, (self.kernel_size, self.kernel_size)))
                         local_pertube = torch.tensor(
-                            np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).cuda()
+                            np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).to(device)
                         individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
 
         individual[0] = torch.clip(individual[0], self.min_ball,
@@ -186,8 +186,6 @@ class EvoAttack():
                 i = np.random.randint(0, shape[2])
                 j = np.random.randint(0, shape[3])
                 current_pixel = individual[0][channel][i][j].cpu()
-                # for SSIM loss
-                # pixel_pertube = torch.tensor(np.random.uniform(max(0, current_pixel - self.epsilon), min(1, current_pixel + self.epsilon)))
                 pixel_pertube = torch.tensor(
                     np.random.uniform(current_pixel - self.epsilon, current_pixel + self.epsilon))
                 individual[0][channel][i][j] = pixel_pertube
@@ -198,17 +196,17 @@ class EvoAttack():
         crossover_idx = i * shape[2] + j
         flattened_ind1 = individual1[0][channel].flatten()
         flattened_ind2 = individual2[0][channel].flatten()
-        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[: crossover_idx].shape))).to(device)
-        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[: crossover_idx].shape))).to(device)
-        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind1[crossover_idx:].shape))).to(device)
-        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + (self.epsilon * self.delta) #torch.tensor(np.random.uniform(- self.delta, self.delta, (flattened_ind2[crossover_idx:].shape))).to(device)
+        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - (self.epsilon * self.delta)
+        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - (self.epsilon * self.delta)
+        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + (self.epsilon * self.delta)
+        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + (self.epsilon * self.delta)
         individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
         individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
-        individual1[0][channel] = torch.clip(individual1[0][channel], self.min_ball[channel], self.max_ball[channel])
+        individual1[0][channel] = torch.clip(individual1[0][channel], self.min_ball[0][channel], self.max_ball[0][channel])
 
-        individual2[0][channel] = torch.clip(individual2[0][channel], self.min_ball[channel], self.max_ball[channel])
+        individual2[0][channel] = torch.clip(individual2[0][channel], self.min_ball[0][channel], self.max_ball[0][channel])
 
         return individual1, individual2
 
@@ -235,10 +233,7 @@ class EvoAttack():
             parent1 = self.selection()
             parent2 = self.selection()
             offspring1, offspring2 = self.crossover(parent1, parent2)
-            # offspring1 = self.mutate(offspring1)
-            # offspring2 = self.local_mutate(offspring2)
-            offspring1 = self.local_mutate(offspring1)
-            # offspring1 = self.new_local_mutate(offspring1)
+            offspring1 = self.new_local_mutate(offspring1)
             new_gen.append(offspring1)
             new_gen.append(offspring2)
         self.current_pop = new_gen
@@ -254,15 +249,14 @@ class EvoAttack():
     def ind_diversity(self, individual):
         diversity = 0
         for other in self.current_pop:
-            diversity += torch.sum(abs(individual - other)) #/ individual.flatten().shape[0]
+            diversity += torch.sum((individual - other) ** 2)
         diversity = 1 / (1 + diversity)
         return diversity
 
     def compute_whole_diversity(self):
         diversity = 0
-        for ind1 in self.current_pop:
-            for ind2 in self.current_pop:
-                diversity += torch.sum(abs(ind1 - ind2)) #/ ind1.flatten().shape[0]
+        for ind in self.current_pop:
+            diversity += self.ind_diversity(ind)
         diversity = 1 / (1 + diversity)
         return diversity
 
@@ -279,12 +273,8 @@ class EvoAttack():
             else:
                 i += 1
 
-            # if i % 10 == 0:
-            #     self.current_pop = [self.img.clone() for i in range(self.pop_size)]
-            #     best_diversity = 0
-
             if gen % 5 == 0:
-                # print(f'Diversity gen #{gen}: {diversity}')
+                print(f'Diversity gen #{gen}: {diversity}')
                 self.best_attacks.append(self.get_best_individual()[0])
             self.evolve_new_gen()
             gen += 1

@@ -2,7 +2,7 @@
 __pycache__/
 models/
 data/
-state_dicts/
+models/state_dicts/
 figures/
 pycharm_session_*.log
 slurm-*.out
