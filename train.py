@@ -8,7 +8,6 @@ import copy
 
 from model import ConvNet
 
-
 def load_dataset(name='mnist'):
     if name == 'mnist':
         # transforms.Normalize(# (0.1307,), (0.3081,))
@@ -29,14 +28,14 @@ def load_dataset(name='mnist'):
     else:
         Exception('No such dataset')
 
-    train_loader = DataLoader(train_set, batch_size=len(train_set), shuffle=True)
-    test_loader = DataLoader(test_set, batch_size=len(test_set), shuffle=True)
+    train_loader = DataLoader(train_set, batch_size=len(train_set), shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=len(test_set), shuffle=False)
 
-    x_train, y_train = next(iter(train_loader))
+    # x_train, y_train = next(iter(train_loader))
     x_test, y_test = next(iter(test_loader))
 
-    return (x_train, y_train), (x_test, y_test), next(iter(train_loader))[0].min(), next(iter(train_loader))[0].max()
-
+    # return (x_train, y_train), (x_test, y_test), next(iter(train_loader))[0].min(), next(iter(train_loader))[0].max()
+    return (None, None), (x_test, y_test), next(iter(train_loader))[0].min(), next(iter(train_loader))[0].max()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

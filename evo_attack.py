@@ -3,16 +3,16 @@ from torchvision import transforms
 import torch.nn as nn
 import numpy as np
 import torch
-from piqa import SSIM
 from pathlib import Path
 import random
+import math
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
     def __init__(self, model, img, label, min_pixel, max_pixel, targeted_label=None, logits=True, n_gen=1000, pop_size=20,
                  n_tournament=2, verbose=True, perturbed_pixels=1, epsilon=1, alpha=1, beta=1, gamma=1, metric='linf',
-                 epsilon_decay=0.99, steps=400, kernel_size=5, delta=0.3):
+                 epsilon_decay=0.99, steps=200, kernel_size=5, delta=0.3):
         self.model = model
         self.img = img
         self.label = label
@@ -43,6 +43,7 @@ class EvoAttack():
         self.best_individual = None
         self.best_attacks = []
         self.stop = False
+        self.explore = False
 
         if self.verbose:
             print("################################")
@@ -82,13 +83,6 @@ class EvoAttack():
         loss = criterion(individual, self.img)
         return loss
 
-    def ssim_loss(self, individual):
-        criterion = SSIM().to(device)
-        loss = criterion(individual, self.img)
-        return loss
-
-# TODO: 1/1+self.ind_diversity
-
     def compute_fitness(self, pop):
         with torch.no_grad():
             self.fitnesses = torch.zeros(self.pop_size)
@@ -96,12 +90,8 @@ class EvoAttack():
                 self.n_queries += 1
                 if (self.n_queries % self.steps == 0):
                     self.perturbed_pixels += 1
+                    self.n_tournament += 1
                     self.epsilon *= self.epsilon
-                if self.metric == 'SSIM':
-                    if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) - self.beta * self.ssim_loss(individual)
-                    else:
-                        self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.ssim_loss(individual)
                 elif self.metric == 'l0':
                     if self.targeted_label == None:
                         self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l0_loss(individual) + self.gamma * self.ind_diversity(individual)
@@ -114,7 +104,7 @@ class EvoAttack():
                         self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.l2_loss(individual) - self.gamma * self.ind_diversity(individual)
                 elif self.metric == 'linf':
                     if self.targeted_label == None:
-                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.linf_loss(individual) + self.gamma * self.ind_diversity(individual)
+                        self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual) + self.gamma * self.ind_diversity(individual)
                     else:
                         self.fitnesses[i] = self.alpha * self.get_targeted_label_prob(individual) - self.beta * self.linf_loss(individual) - self.gamma * self.ind_diversity(individual)
                 else:
@@ -156,28 +146,10 @@ class EvoAttack():
                 i = np.random.randint(0 + self.kernel_size, shape[2] - self.kernel_size)
                 j = np.random.randint(0 + self.kernel_size, shape[3] - self.kernel_size)
                 current_pixel = individual[0][channel][i][j].cpu()
-                local_pertube = torch.tensor(np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).to(device)
+                local_pertube = torch.tensor(np.random.uniform(current_pixel - self.delta, current_pixel + self.delta, (self.kernel_size, self.kernel_size))).to(device)
                 individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
-
                 individual[0][channel] = torch.clip(individual[0][channel], self.min_ball[0][channel], self.max_ball[0][channel])
         return individual.to(device)
-
-    def new_local_mutate(self, individual):
-        shape = individual.shape
-        for channel in range(shape[1]):
-            for i in range(self.kernel_size, shape[2] - self.kernel_size):
-                for j in range(self.kernel_size, shape[3] - self.kernel_size):
-                    if random.uniform(0, 1) > 0.5:
-                        current_pixel = individual[0][channel][i][j].cpu()
-                        local_pertube = torch.tensor(
-                            np.random.uniform(current_pixel, self.delta, (self.kernel_size, self.kernel_size))).to(device)
-                        individual[0][channel][i:i + self.kernel_size, j:j + self.kernel_size] += local_pertube
-
-        individual[0] = torch.clip(individual[0], self.min_ball,
-                                            self.max_ball)
-        return individual.to(device)
-
-
 
     def mutate(self, individual):
         shape = individual.shape
@@ -196,10 +168,10 @@ class EvoAttack():
         crossover_idx = i * shape[2] + j
         flattened_ind1 = individual1[0][channel].flatten()
         flattened_ind2 = individual2[0][channel].flatten()
-        flattened_ind1_prefix = flattened_ind1[: crossover_idx] - (self.epsilon * self.delta)
-        flattened_ind2_prefix = flattened_ind2[: crossover_idx] - (self.epsilon * self.delta)
-        flattened_ind1_suffix = flattened_ind1[crossover_idx:] + (self.epsilon * self.delta)
-        flattened_ind2_suffix = flattened_ind2[crossover_idx:] + (self.epsilon * self.delta)
+        flattened_ind1_prefix = self.epsilon * flattened_ind1[: crossover_idx]
+        flattened_ind2_prefix = self.epsilon * flattened_ind2[: crossover_idx]
+        flattened_ind1_suffix = self.epsilon * flattened_ind1[crossover_idx:]
+        flattened_ind2_suffix = self.epsilon * flattened_ind2[crossover_idx:]
         individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(shape[2],
                                                                                                         shape[3])
         individual2[0][channel] = torch.cat((flattened_ind2_prefix, flattened_ind1_suffix), dim=0).view(shape[2],
@@ -232,8 +204,11 @@ class EvoAttack():
         for i in range(self.pop_size // 2):
             parent1 = self.selection()
             parent2 = self.selection()
-            offspring1, offspring2 = self.crossover(parent1, parent2)
-            offspring1 = self.new_local_mutate(offspring1)
+            if (self.explore):
+                parent1, parent2 = self.crossover(parent1, parent2)
+            # if (self.explore):
+            offspring1 = self.local_mutate(parent1)
+            offspring2 = self.local_mutate(parent2)
             new_gen.append(offspring1)
             new_gen.append(offspring2)
         self.current_pop = new_gen
@@ -263,15 +238,23 @@ class EvoAttack():
     def evolve(self):
         gen = 0
         i = 0
-        best_diversity = 0
+        best_diversity = math.inf
         while gen < self.n_gen and not self.stop_criterion():
-            # print(f'Fitnesses: {self.fitnesses}')
             diversity = self.compute_whole_diversity()
 
-            if diversity > best_diversity:
+            if diversity < best_diversity:
                 best_diversity = diversity
+                self.explore = False
+                print(f'Exploit!')
             else:
                 i += 1
+
+            if i == 10:
+                i = 0
+                self.explore = True
+                print(f'Best diversity: {best_diversity}')
+                best_diversity = diversity
+                print(f'Explore!')
 
             if gen % 5 == 0:
                 print(f'Diversity gen #{gen}: {diversity}')
