@@ -11,31 +11,45 @@ from model import ConvNet
 def load_dataset(name='mnist'):
     if name == 'mnist':
         # transforms.Normalize(# (0.1307,), (0.3081,))
-        train_set = datasets.MNIST('./data', train=True, download=True,
-                                   transform=transforms.Compose([transforms.ToTensor()]))
+        # train_set = datasets.MNIST('./data', train=True, download=True,
+        #                            transform=transforms.Compose([transforms.ToTensor()]))
         test_set = datasets.MNIST('./data', train=False, download=True,
                                   transform=transforms.Compose([transforms.ToTensor()]))
 
     elif name == 'cifar10':
-        train_set = datasets.CIFAR10('./data', train=True, download=True,
-                                     transform=transforms.Compose([transforms.ToTensor(),
-                                                                   transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                                                                        (0.2471, 0.2435, 0.2616))]))
+        # train_set = datasets.CIFAR10('./data', train=True, download=True,
+        #                              transform=transforms.Compose([transforms.ToTensor(),
+        #                                                            transforms.Normalize((0.4914, 0.4822, 0.4465),
+        #                                                                                 (0.2471, 0.2435, 0.2616))]))
         test_set = datasets.CIFAR10('./data', train=False, download=True,
                                     transform=transforms.Compose([transforms.ToTensor(),
                                                                   transforms.Normalize((0.4914, 0.4822, 0.4465),
                                                                                        (0.2471, 0.2435, 0.2616))]))
+    elif name == 'imagenet':
+        # train_set = datasets.ImageNet('./data', train=True, download=True,
+        #                              transform=transforms.Compose([transforms.ToTensor(),
+        #                                                            transforms.Normalize((0.4914, 0.4822, 0.4465),
+        #
+        #                                                                                 (0.2471, 0.2435, 0.2616))]))
+        test_set = datasets.ImageNet('/cs_storage/public_datasets/ImageNet', split='val',
+                                    transform=transforms.Compose([transforms.Resize(256),
+                                                                  transforms.CenterCrop(224),
+                                                                  transforms.ToTensor(),
+                                                                  transforms.Normalize((0.485, 0.456, 0.406),
+                                                                                       (0.229, 0.224, 0.225))]))
     else:
         Exception('No such dataset')
 
-    train_loader = DataLoader(train_set, batch_size=len(train_set), shuffle=False)
-    test_loader = DataLoader(test_set, batch_size=len(test_set), shuffle=False)
+    # train_loader = DataLoader(train_set, batch_size=len(train_set), shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=len(test_set), shuffle=True)
+    # test_loader = DataLoader(test_set, batch_size=512, shuffle=True)
 
     # x_train, y_train = next(iter(train_loader))
     x_test, y_test = next(iter(test_loader))
 
     # return (x_train, y_train), (x_test, y_test), next(iter(train_loader))[0].min(), next(iter(train_loader))[0].max()
-    return (None, None), (x_test, y_test), next(iter(train_loader))[0].min(), next(iter(train_loader))[0].max()
+    # return (None, None), (x_test, y_test), next(iter(train_loader))[0].min(), next(iter(train_loader))[0].max()
+    return (x_test, y_test), next(iter(test_loader))[0].min(), next(iter(test_loader))[0].max()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 

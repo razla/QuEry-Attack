@@ -1,25 +1,26 @@
 from art.attacks.evasion import ZooAttack, SimBA
 from art.estimators.classification import PyTorchClassifier
-import torch.nn as nn
 import torch.optim as optim
+import torch.nn as nn
 import numpy as np
-import torch
 import argparse
+import random
+import torch
 import math
 import wandb
 
-from evo_attack import EvoAttack
+from attack import EvoAttack
 from runner import get_model
 from train import load_dataset
 
-wandb.init(project="EvoAttack", entity="razla")
+# wandb.init(project="EvoAttack", entity="razla")
 
 dataset = 'cifar10'
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 models_names = ['custom', 'mobilenet_v2', 'googlenet']
-datasets_names = ['cifar10', 'mnist']
+datasets_names = ['imagenet', 'cifar10', 'mnist']
 metrics = ['l2', 'linf']
 
 def correctly_classified(model, x, y):
@@ -72,12 +73,12 @@ if __name__ == '__main__':
     pop_size = args.pop
     n_gen = args.gen
 
-    wandb.config = {
-        "delta": delta,
-        "perturbed_pixels": pixels
-    }
+    # wandb.config = {
+    #     "delta": delta,
+    #     "perturbed_pixels": pixels
+    # }
 
-    (x_train, y_train), (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(datasets)
+    (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(datasets)
 
     model = get_model(models, datasets)
 
@@ -105,10 +106,14 @@ if __name__ == '__main__':
         y = y.to(device)
 
         if correctly_classified(model, x, y) and count < n_images:
+            y_list = [label for label in range(10) if torch.tensor(label).to(device) != y]
+            random_y = torch.tensor(random.choice(y_list))
             count += 1
             correctly_classified_images_indices.append(i)
-            adv, n_queries, success = EvoAttack(model=model, img=x, label=y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
+            adv, n_queries, success = EvoAttack(model=model, img=x, label=y, targeted_label=random_y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
                             kernel_size=3, min_pixel = min_pixel_value, max_pixel = max_pixel_value).evolve()
+            # adv, n_queries, success = EvoAttack(model=model, img=x, label=y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
+            #                 kernel_size=5, min_pixel = min_pixel_value, max_pixel = max_pixel_value).evolve()
             adv = adv.cpu().numpy()
             if i == 0:
                 evo_x_test_adv = adv
@@ -151,15 +156,15 @@ if __name__ == '__main__':
     print("Accuracy on SimBA test examples: {}%".format(accuracy * 100))
 
     print('########################################')
-    print(f'Summary:\n')
-    print(f'\tModel - {models}')
-    print(f'\tMetric - {metrics[0]}, delta - {delta:.4f}')
-    print(f'\tPixels - {pixels}')
+    print(f'Summary:')
+    print(f'\tModel: {models}')
+    print(f'\tMetric: {metrics[0]}, delta: {delta:.4f}')
+    print(f'\tPerturbed pixels: {pixels}')
     print(f'\t\tSimBA - test accuracy: {accuracy * 100:.4f}%')
-    print(f'\t\tSimba - queries (median) - {int(np.median(attack.queries))}')
+    print(f'\t\tSimba - queries (median): {int(np.median(simba_queries))}')
     print(f'\t\tEvo - test accuracy: {(1 - success_count / len(y_test)) * 100:.4f}%')
-    print(f'\t\tEvo - queries (median) - {int(np.median(n_queries))}')
+    print(f'\t\tEvo - queries (median): {int(np.median(n_queries))}')
     print('########################################')
 
-    wandb.log({"Queries": int(np.median(n_queries))})
-    wandb.log({"ASR": (1 - success_count / len(y_test)) * 100})
+    # wandb.log({"Queries": int(np.median(n_queries))})
+    # wandb.log({"ASR": (1 - success_count / len(y_test)) * 100})
