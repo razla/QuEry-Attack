@@ -19,9 +19,12 @@ parser.add_argument("--dataset", "-d", choices=['ALL'] + datasets_names, default
                     help="Run only specific dataset, or 'ALL' datasets")
 parser.add_argument("--images", "-i", type=int, default=20,
                     help="Number of images")
+parser.add_argument("--delta", "-de", type=float, default=0.4,
+                    help="Perturbation")
 args = parser.parse_args()
 dataset_name = args.dataset
 n_images = args.images
+delta = args.delta
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -72,8 +75,8 @@ def square_objective(trial):
 
     square_queries = []
     for i in range(len(x_test)):
-        min_ball = torch.tile(torch.maximum(x_test[[i]] - 0.4, min_pixel_value), (1, 1))
-        max_ball = torch.tile(torch.minimum(x_test[[i]] + 0.4, max_pixel_value), (1, 1))
+        min_ball = torch.tile(torch.maximum(x_test[[i]] - delta, min_pixel_value), (1, 1))
+        max_ball = torch.tile(torch.minimum(x_test[[i]] + delta, max_pixel_value), (1, 1))
 
         classifier = PyTorchClassifier(
             model=model,
@@ -88,7 +91,7 @@ def square_objective(trial):
         attack = SquareAttack(estimator=classifier,
                            max_iter=10000,
                            norm='inf',
-                           eps=0.4,
+                           eps=delta,
                            p_init=p_init,
                            nb_restarts=nb_restarts,
                            batch_size=1,
@@ -145,11 +148,10 @@ def zoo_objective(trial):
 
     x_test, y_test = x_test[correctly_classified_images_indices], y_test[correctly_classified_images_indices]
 
-    # model.classifier.add_module('2', torch.nn.Softmax(dim=1))
     n_queries = []
     for i in range(len(x_test)):
-        min_ball = torch.tile(torch.maximum(x_test[[i]] - 0.4, min_pixel_value), (1, 1))
-        max_ball = torch.tile(torch.minimum(x_test[[i]] + 0.4, max_pixel_value), (1, 1))
+        min_ball = torch.tile(torch.maximum(x_test[[i]] - delta, min_pixel_value), (1, 1))
+        max_ball = torch.tile(torch.minimum(x_test[[i]] + delta, max_pixel_value), (1, 1))
 
         classifier = PyTorchClassifier(
             model=model,
@@ -222,8 +224,8 @@ def simba_objective(trial):
     n_queries = []
     for i in range(len(x_test)):
 
-        min_ball = torch.tile(torch.maximum(x_test[i] - 0.4, min_pixel_value), (1, 1))
-        max_ball = torch.tile(torch.minimum(x_test[i] + 0.4, max_pixel_value), (1, 1))
+        min_ball = torch.tile(torch.maximum(x_test[i] - delta, min_pixel_value), (1, 1))
+        max_ball = torch.tile(torch.minimum(x_test[i] + delta, max_pixel_value), (1, 1))
 
         classifier = PyTorchClassifier(
             model=model,
@@ -252,15 +254,10 @@ def simba_objective(trial):
 
 def evo_objective(trial):
     global x_test, y_test
-    # pop_size = trial.suggest_int('pop_size', 100, 2000)
-    # n_gen = trial.suggest_int('n_gen', 10, 200)
-    # pixels = trial.suggest_int('pixels', 1, 100)
+
     alpha = trial.suggest_float('alpha', .001, 1)
     beta = trial.suggest_float('beta', .001, 1)
     gamma = trial.suggest_float('gamma', .001, 1)
-    kernel_size = trial.suggest_int('kernel', 1, 5)
-    # n_tournament = trial.suggest_int('n_tournament', 2, 50)
-    # steps = trial.suggest_int('steps', 50, 1000)
 
     model = get_model('mobilenet_v2', 'cifar10')
 
@@ -288,13 +285,15 @@ def evo_objective(trial):
         x = x.unsqueeze(dim=0).to(device)
         y = y.to(device)
 
+        if count == n_images:
+            break
+
         if correctly_classified(model, x, y) and count < n_images:
             count += 1
             correctly_classified_images_indices.append(i)
-            adv, n_queries, success = EvoAttack(model=model, img=x, label=y, metric='linf', delta=0.4,
+            adv, n_queries, success = EvoAttack(model=model, img=x, label=y, metric='linf', delta=delta,
                                                 perturbed_pixels=32, n_gen=250, pop_size=40,
-                                                n_tournament=2, steps=100,
-                                                kernel_size=kernel_size, min_pixel=min_pixel_value,
+                                                n_tournament=2, steps=100, min_pixel=min_pixel_value,
                                                 max_pixel=max_pixel_value, alpha=alpha, beta=beta, gamma=gamma).evolve()
             print(f'Queries: {n_queries}')
             adv = adv.cpu().numpy()

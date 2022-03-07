@@ -10,12 +10,13 @@ from model import ConvNet
 
 def load_dataset(name='mnist'):
     if name == 'mnist':
-        # transforms.Normalize(# (0.1307,), (0.3081,))
         # train_set = datasets.MNIST('./data', train=True, download=True,
-        #                            transform=transforms.Compose([transforms.ToTensor()]))
+        #                            transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize( (0.1307,), (0.3081,))]))
         test_set = datasets.MNIST('./data', train=False, download=True,
-                                  transform=transforms.Compose([transforms.ToTensor()]))
-
+                                  transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize( (0.1307,), (0.3081,))]))
+        # train_loader = DataLoader(train_set, batch_size=128, shuffle=True)
+        # test_loader = DataLoader(test_set, batch_size=128, shuffle=True)
+        # return train_loader, test_loader
     elif name == 'cifar10':
         # train_set = datasets.CIFAR10('./data', train=True, download=True,
         #                              transform=transforms.Compose([transforms.ToTensor(),
@@ -113,15 +114,15 @@ def train_model(net, n_epochs, train_loader, test_loader, lr, weight_decay):
 
 
 if __name__ == '__main__':
-    dataset = 'cifar10'
-    in_channels = 3
+    dataset = 'mnist'
+    in_channels = 1
     out_channels = [32, 64, 128]
-    fc_dims = [512, 128, 10]
+    fc_dims = [128, 64, 10]
     batch_size = 128
-    n_epochs = 300
+    n_epochs = 200
     lr = 0.02
     weight_decay = 1e-6
     net = ConvNet(in_channels=in_channels, out_channels=out_channels, fc_dims=fc_dims).to(device)
-    train_loader, test_loader = load_dataset(dataset, batch_size=batch_size)
+    train_loader, test_loader = load_dataset(dataset)
     model, history = train_model(net, n_epochs, train_loader, test_loader, lr, weight_decay)
-    torch.save(model, f'{dataset}_model.pth')
+    torch.save(model, f'./models/state_dicts/{dataset}_model.pth')

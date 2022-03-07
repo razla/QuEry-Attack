@@ -1,19 +1,15 @@
-from art.attacks.evasion import ZooAttack, SimBA
+from art.attacks.evasion import ZooAttack, SimBA, SquareAttack
 from art.estimators.classification import PyTorchClassifier
-import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 import argparse
 import random
 import torch
 import math
-import wandb
 
 from attack import EvoAttack
 from runner import get_model
 from train import load_dataset
-
-# wandb.init(project="EvoAttack", entity="razla")
 
 dataset = 'cifar10'
 
@@ -26,6 +22,12 @@ metrics = ['l2', 'linf']
 def correctly_classified(model, x, y):
     softmax = nn.Softmax(dim=1)
     return y == torch.argmax(softmax(model(x)))
+
+def compute_accuracy(classifier, x_test, y_test):
+    predictions = classifier.predict(x_test)
+    accuracy = np.sum(np.argmax(predictions, axis=1) == np.array(y_test)) / len(y_test)
+    print("Accuracy on benign test examples: {}%".format(accuracy * 100))
+    return accuracy
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -73,98 +75,123 @@ if __name__ == '__main__':
     pop_size = args.pop
     n_gen = args.gen
 
-    # wandb.config = {
-    #     "delta": delta,
-    #     "perturbed_pixels": pixels
-    # }
-
     (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(datasets)
 
     model = get_model(models, datasets)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
-
     classifier = PyTorchClassifier(
         model=model,
         clip_values=(min_pixel_value, max_pixel_value),
-        loss=criterion,
-        optimizer=optimizer,
-        input_shape=(3, 32, 32),
+        loss=nn.CrossEntropyLoss(),
+        input_shape=x_test[0].numpy().shape,
         nb_classes=10,
     )
-    predictions = classifier.predict(x_test)
-    accuracy = np.sum(np.argmax(predictions, axis=1) == np.array(y_test)) / len(y_test)
-    print("Accuracy on benign test examples: {}%".format(accuracy * 100))
+
+    compute_accuracy(classifier, x_test, y_test)
 
     count = 0
     success_count = 0
-    queries = []
+    evo_queries = []
     correctly_classified_images_indices = []
     for i, (x, y) in enumerate(zip(x_test, y_test)):
         x = x.unsqueeze(dim=0).to(device)
         y = y.to(device)
+
+        if count == n_images:
+            break
 
         if correctly_classified(model, x, y) and count < n_images:
             y_list = [label for label in range(10) if torch.tensor(label).to(device) != y]
             random_y = torch.tensor(random.choice(y_list))
             count += 1
             correctly_classified_images_indices.append(i)
-            adv, n_queries, success = EvoAttack(model=model, img=x, label=y, targeted_label=random_y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
-                            kernel_size=3, min_pixel = min_pixel_value, max_pixel = max_pixel_value).evolve()
-            # adv, n_queries, success = EvoAttack(model=model, img=x, label=y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
+            # adv, n_queries, success = EvoAttack(model=model, img=x, label=y, targeted_label=random_y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
             #                 kernel_size=5, min_pixel = min_pixel_value, max_pixel = max_pixel_value).evolve()
+            adv, n_queries, success = EvoAttack(model=model, img=x, label=y, metric='linf', delta=delta, perturbed_pixels=pixels, n_gen=n_gen, pop_size=pop_size,
+                            kernel_size=5, min_pixel = min_pixel_value, max_pixel = max_pixel_value).evolve()
             adv = adv.cpu().numpy()
-            if i == 0:
+            if count == 1:
                 evo_x_test_adv = adv
             else:
                 evo_x_test_adv = np.concatenate((adv, evo_x_test_adv), axis=0)
             if success:
                 success_count += 1
-            queries.append(n_queries)
+            evo_queries.append(n_queries)
 
     x_test, y_test = x_test[correctly_classified_images_indices], y_test[correctly_classified_images_indices]
+
+    # zoo_classifier = classifier
+    square_classifier = classifier
+
     model.classifier.add_module('2', torch.nn.Softmax(dim=1))
+
+    simba_model = model
+
     simba_queries = []
+    # zoo_queries = []
+    square_queries = []
     for i in range(len(x_test)):
 
         min_ball = torch.tile(torch.maximum(x_test[i] - delta, min_pixel_value), (1, 1))
         max_ball = torch.tile(torch.minimum(x_test[i] + delta, max_pixel_value), (1, 1))
 
-        classifier = PyTorchClassifier(
-            model=model,
+        simba_classifier = PyTorchClassifier(
+            model=simba_model,
             clip_values=(min_ball.numpy(), max_ball.numpy()),
-            loss=criterion,
-            optimizer=optimizer,
+            loss=nn.CrossEntropyLoss(),
             input_shape=(3, 32, 32),
             nb_classes=10,
         )
 
         # Step 6: Generate adversarial test examples
-        attack = SimBA(classifier=classifier)
-        x_test_adv = attack.generate(x=x_test[[i]].numpy())
+        simba_attack = SimBA(classifier=simba_classifier, max_iter=10000)
+        simba_x_test_adv = simba_attack.generate(x=x_test[[i]].numpy())
         if i != 0:
-            adv = np.concatenate((x_test_adv, x_test_adv), axis=0)
+            simba_adv = np.concatenate((simba_x_test_adv, simba_adv), axis=0)
         else:
-            adv = x_test_adv
-        simba_queries.append(attack.queries)
+            simba_adv = simba_x_test_adv
+
+        # zoo_attack = ZooAttack(classifier=zoo_classifier, max_iter=10000)
+        # zoo_x_test_adv = zoo_attack.generate(x=x_test[[i]].numpy())
+        # if i != 0:
+        #     zoo_adv = np.concatenate((zoo_x_test_adv, zoo_adv), axis=0)
+        # else:
+        #     zoo_adv = zoo_x_test_adv
+
+        square_attack = SquareAttack(estimator=square_classifier, max_iter=10000)
+        square_x_test_adv = square_attack.generate(x=x_test[[i]].numpy())
+        if i != 0:
+            square_adv = np.concatenate((square_x_test_adv, square_adv), axis=0)
+        else:
+            square_adv = square_x_test_adv
+
+        simba_queries.append(simba_attack.queries)
+        # zoo_queries.append(zoo_attack.queries)
+        square_queries.append(square_attack.queries)
 
     # Step 7: Evaluate the ART classifier on adversarial test examples
 
-    predictions = classifier.predict(adv)
-    accuracy = np.sum(predictions == y_test[:50]) / len(y_test[:50])
-    print("Accuracy on SimBA test examples: {}%".format(accuracy * 100))
+    simba_accuracy = compute_accuracy(simba_classifier, simba_adv, y_test)
+    # zoo_accuracy = compute_accuracy(zoo_classifier, zoo_adv, y_test)
+    square_accuracy = compute_accuracy(square_classifier, square_adv, y_test)
 
     print('########################################')
     print(f'Summary:')
     print(f'\tModel: {models}')
     print(f'\tMetric: {metrics[0]}, delta: {delta:.4f}')
-    print(f'\tPerturbed pixels: {pixels}')
-    print(f'\t\tSimBA - test accuracy: {accuracy * 100:.4f}%')
+    print(f'\tSimba:')
+    print(f'\t\tSimBA - test accuracy: {simba_accuracy * 100:.4f}%')
+    print(f'\t\tSimba - queries: {simba_queries}')
     print(f'\t\tSimba - queries (median): {int(np.median(simba_queries))}')
-    print(f'\t\tEvo - test accuracy: {(1 - success_count / len(y_test)) * 100:.4f}%')
-    print(f'\t\tEvo - queries (median): {int(np.median(n_queries))}')
+    # print(f'\t\tZoo - test accuracy: {zoo_accuracy * 100:.4f}%')
+    # print(f'\t\tZoo - queries: {zoo_queries}')
+    # print(f'\t\tZoo - queries (median): {int(np.median(zoo_queries))}')
+    print(f'\tSquare:')
+    print(f'\t\tSquare - test accuracy: {square_accuracy * 100:.4f}%')
+    print(f'\t\tSquare - queries: {square_queries}')
+    print(f'\t\tSquare - queries (median): {int(np.median(square_queries))}')
+    print(f'\tEvo:')
+    print(f'\t\tEvo - test accuracy: {(1 - (success_count / n_images)) * 100:.4f}%')
+    print(f'\t\tEvo - queries: {evo_queries}')
+    print(f'\t\tEvo - queries (median): {int(np.median(evo_queries))}')
     print('########################################')
-
-    # wandb.log({"Queries": int(np.median(n_queries))})
-    # wandb.log({"ASR": (1 - success_count / len(y_test)) * 100})
