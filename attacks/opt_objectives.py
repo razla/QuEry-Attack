@@ -9,7 +9,7 @@ import argparse
 import torch
 
 from attack import EvoAttack
-from runner import get_model
+from utils import get_model
 from train import load_dataset
 
 datasets_names = ['imagenet', 'cifar10', 'mnist']

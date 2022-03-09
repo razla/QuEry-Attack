@@ -5,7 +5,7 @@ import sys
 import os
 import torch
 
-from train import load_dataset
+from datasets_loader import load_dataset
 
 dataset = 'cifar10'
 
