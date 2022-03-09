@@ -179,50 +179,51 @@ if __name__ == '__main__':
 
     x_test, y_test = x_test[correctly_classified_images_indices], y_test[correctly_classified_images_indices]
 
-    # simba_queries = []
-    # pgd_queries = []
-    # square_queries = []
-    # pgd_adv = None
-    # simba_adv = None
-    # square_adv = None
-    # for i in range(len(x_test)):
-    #
-    #     min_ball = torch.tile(torch.maximum(x_test[i] - delta, min_pixel_value), (1, 1))
-    #     max_ball = torch.tile(torch.minimum(x_test[i] + delta, max_pixel_value), (1, 1))
-    #
-    #     pgd_adv, pgd_n_queries = pgd_attack(init_model, min_ball, max_ball, x_test, i, pgd_adv)
-    #
-    #     simba_adv, simba_n_queries = simba_attack(init_model, min_ball, max_ball, x_test, i, simba_adv)
-    #
-    #     square_adv, square_n_queries = square_attack(init_model, min_ball, max_ball, x_test, i, square_adv)
-    #
-    #     pgd_queries.append(pgd_n_queries)
-    #     simba_queries.append(simba_n_queries)
-    #     # carlini_queries.append(carlini_attack.queries)
-    #     square_queries.append(square_n_queries)
-    #
-    # # Step 7: Evaluate the ART classifier on adversarial test examples
-    #
-    # simba_accuracy = compute_accuracy(classifier, simba_adv, y_test)
+    simba_queries = []
+    pgd_queries = []
+    square_queries = []
+    pgd_adv = None
+    simba_adv = None
+    square_adv = None
+    for i in range(len(x_test)):
+
+        min_ball = torch.tile(torch.maximum(x_test[i] - delta, min_pixel_value), (1, 1))
+        max_ball = torch.tile(torch.minimum(x_test[i] + delta, max_pixel_value), (1, 1))
+
+        # pgd_adv, pgd_n_queries = pgd_attack(init_model, min_ball, max_ball, x_test, i, pgd_adv)
+
+        simba_adv, simba_n_queries = simba_attack(init_model, min_ball, max_ball, x_test, i, simba_adv)
+
+        square_adv, square_n_queries = square_attack(init_model, min_ball, max_ball, x_test, i, square_adv)
+
+        # pgd_queries.append(pgd_n_queries)
+        simba_queries.append(simba_n_queries)
+        # carlini_queries.append(carlini_attack.queries)
+        square_queries.append(square_n_queries)
+
+    # Step 7: Evaluate the ART classifier on adversarial test examples
+
+    simba_accuracy = compute_accuracy(classifier, simba_adv, y_test)
     # pgd_accuracy = compute_accuracy(classifier, pgd_adv, y_test)
-    # square_accuracy = compute_accuracy(classifier, square_adv, y_test)
+    square_accuracy = compute_accuracy(classifier, square_adv, y_test)
 
     print('########################################')
     print(f'Summary:')
+    print(f'\tDataset: {datasets}')
     print(f'\tModel: {models}')
     print(f'\tMetric: {metrics[0]}, delta: {delta:.4f}')
-    # print(f'\tSimba:')
-    # print(f'\t\tSimBA - test accuracy: {simba_accuracy * 100:.4f}%')
-    # print(f'\t\tSimba - queries: {simba_queries}')
-    # print(f'\t\tSimba - queries (median): {int(np.median(simba_queries))}')
+    print(f'\tSimba:')
+    print(f'\t\tSimBA - test accuracy: {simba_accuracy * 100:.4f}%')
+    print(f'\t\tSimba - queries: {simba_queries}')
+    print(f'\t\tSimba - queries (median): {int(np.median(simba_queries))}')
     # print(f'\tPGD:')
     # print(f'\t\tPGD - test accuracy: {pgd_accuracy * 100:.4f}%')
     # print(f'\t\tPGD - queries: {pgd_queries}')
     # print(f'\t\tPGD - queries (median): {int(np.median(pgd_queries))}')
-    # print(f'\tSquare:')
-    # print(f'\t\tSquare - test accuracy: {square_accuracy * 100:.4f}%')
-    # print(f'\t\tSquare - queries: {square_queries}')
-    # print(f'\t\tSquare - queries (median): {int(np.median(square_queries))}')
+    print(f'\tSquare:')
+    print(f'\t\tSquare - test accuracy: {square_accuracy * 100:.4f}%')
+    print(f'\t\tSquare - queries: {square_queries}')
+    print(f'\t\tSquare - queries (median): {int(np.median(square_queries))}')
     print(f'\tEvo:')
     print(f'\t\tEvo - test accuracy: {(1 - (success_count / n_images)) * 100:.4f}%')
     print(f'\t\tEvo - queries: {evo_queries}')

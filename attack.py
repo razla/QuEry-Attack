@@ -217,7 +217,7 @@ class EvoAttack():
         high_diversity = 120
         while gen < self.n_gen and not self.stop_criterion():
 
-            if gen % 51 == 0:
+            if gen % (self.n_gen // 5) == 0:
                 print('Reset!')
                 self.current_pop = [self.vertical_mutation(self.img.clone()) for i in range(self.pop_size)]
                 self.n_tournament = 2
