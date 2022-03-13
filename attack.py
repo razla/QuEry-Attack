@@ -1,15 +1,14 @@
 import torch.nn as nn
 import numpy as np
 import torch
-import math
+import torchvision.transforms as transforms
 
-from utils import inv_normalize_and_save, print_initialize, print_failure, print_success
+from utils import inv_normalize_and_save, print_initialize, print_failure, print_success, normalize
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
-    def __init__(self, dataset, model, img, label, min_pixel, max_pixel, n_gen=1000, pop_size=20,
-                 n_tournament=2, alpha=1, beta=1, metric='linf', steps=100, kernel_size=5, delta=0.3):
+    def __init__(self, dataset, model, img, label, min_pixel, max_pixel, d_high, d_low, n_gen=1000, pop_size=20, n_tournament=2, steps=100, kernel_size=5, delta=0.3, ):
         self.dataset = dataset
         self.model = model
         self.img = img
@@ -21,9 +20,6 @@ class EvoAttack():
         self.pop_size = pop_size
         self.n_tournament = n_tournament
         self.perturbed_pixels = self.img.shape[2]
-        self.alpha = alpha
-        self.beta = beta
-        self.metric = metric
         self.steps = steps
         self.kernel_size = kernel_size
         self.delta = delta
@@ -32,20 +28,20 @@ class EvoAttack():
         self.min_ball = torch.tile(torch.maximum(self.img - delta, self.min_pixel), (1, 1))
         self.max_ball = torch.tile(torch.minimum(self.img + delta, self.max_pixel), (1, 1))
         self.current_pop = [self.vertical_mutation(self.img.clone()) for i in range(self.pop_size)]
-        self.num_plateus = 0
-        self.plateus_counter = 0
-        self.rho = max(0.1, 2 * (0.9 **  self.num_plateus))
-        self.best_individual_fitness = math.inf
         self.n_queries = 0
+        self.rho = 2
+        self.num_plateus = 0
         self.best_individual = None
         self.not_best_individual = None
-        self.best_attacks = []
         self.stop = False
         self.explore = False
+        self.low_diversity = d_low
+        self.high_diversity = d_high
 
         print_initialize(self.softmax, self.model, self.img, self.label)
 
     def get_label_prob(self, individual):
+        individual = normalize(self.dataset, individual)
         res = self.softmax(self.model(individual))[0][self.label] - max(x for i, x in enumerate(self.softmax(self.model(individual))[0]) if not i == self.label)
         return res
 
@@ -59,21 +55,15 @@ class EvoAttack():
         loss = criterion(individual, self.img)
         return loss
 
-    def compute_fitness(self, pop):
+    def fitness(self, pop):
         with torch.no_grad():
             self.fitnesses = torch.zeros(self.pop_size)
             for i, individual in enumerate(pop):
                 self.n_queries += 1
                 if (self.n_queries % self.steps == 0):
-                    self.perturbed_pixels = max(1, self.perturbed_pixels - 1)
-                    # self.n_tournament = min(self.n_tournament + 1, self.pop_size // 4)
-                    self.kernel_size = max(3, self.kernel_size - 1)
-                elif self.metric == 'l2':
-                    self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual)
-                elif self.metric == 'linf':
-                    self.fitnesses[i] = self.alpha * self.get_label_prob(individual) + self.beta * self.l2_loss(individual)
+                    self.update()
                 else:
-                    raise ValueError('No such loss metric!')
+                    self.fitnesses[i] = self.get_label_prob(individual) + self.l2_loss(individual)
                 if (self.check_pred(individual)):
                     self.best_individual = individual.clone()
                     return True
@@ -86,22 +76,15 @@ class EvoAttack():
             return self.best_individual
         else:
             best_candidate_index = torch.argmin(self.fitnesses)
-        min_fitness = torch.min(self.fitnesses)
-        if self.best_individual_fitness < min_fitness:
-            self.plateus_counter += 1
-            if self.plateus_counter % 100 == 0:
-                self.num_plateus += 1
-        else:
-            self.best_individual_fitness = min_fitness
-            self.plateus_counter = 0
         return self.current_pop[best_candidate_index]
 
     def check_pred(self, individual):
+        individual = normalize(self.dataset, individual)
         res = self.softmax(self.model(individual)).argmax(dim=1).squeeze() != self.label
         return res
 
     def stop_criterion(self):
-        if (self.compute_fitness(self.current_pop)):
+        if (not self.explore and self.fitness(self.current_pop)):
             diversity = self.diversity()
             print(f'Diversity stop criterion: {diversity}')
             self.stop = True
@@ -131,14 +114,11 @@ class EvoAttack():
     def local_mutate(self, individual):
         for pertube in range(self.perturbed_pixels):
             for channel in range(self.shape[1]):
-                # kernel = np.random.randint(2, self.kernel_size)
                 kernel = self.kernel_size
                 i = np.random.randint(0 + kernel, self.shape[2] - kernel)
                 j = np.random.randint(0 + kernel, self.shape[3] - kernel)
                 local_pertube = torch.tensor(
-                    np.random.uniform(low = -self.rho * self.delta, high = self.rho * self.delta, size=(kernel, kernel))).to(device)
-                # local_pertube = torch.tensor(
-                #     np.random.normal(loc=0, scale = 2 * self.delta, size=(kernel, kernel))).to(device)
+                    np.random.normal(loc=0, scale = self.rho * self.delta, size=(kernel, kernel))).to(device)
                 individual[0][channel][i:i + kernel, j:j + kernel] += local_pertube
         individual[0] = torch.clip(individual[0], self.min_ball[0], self.max_ball[0])
         return individual.to(device)
@@ -147,18 +127,10 @@ class EvoAttack():
         crossover_idx = i * self.shape[2] + j
         flattened_ind1 = individual1[0][channel].flatten()
         flattened_ind2 = individual2[0][channel].flatten()
-        flattened_ind1_prefix = flattened_ind1[: crossover_idx] #+ self.delta * torch.tensor(np.random.choice([-1, 1], size=flattened_ind1[: crossover_idx].shape)).to(device)
-        perturbation1 = torch.tensor(np.random.uniform(low = -2 * self.delta, high = 2 * self.delta, size=(flattened_ind1_prefix.shape))).to(device)
+        flattened_ind1_prefix = flattened_ind1[: crossover_idx]
         flattened_ind2_prefix = flattened_ind2[: crossover_idx]
-        perturbation2 = torch.tensor(np.random.uniform(low = -2 * self.delta, high = 2 * self.delta, size=(flattened_ind2_prefix.shape))).to(device)
         flattened_ind1_suffix = flattened_ind1[crossover_idx:]
-        perturbation3 = torch.tensor(np.random.uniform(low = -2 * self.delta, high = 2 * self.delta, size=(flattened_ind1_suffix.shape))).to(device)
         flattened_ind2_suffix = flattened_ind2[crossover_idx:]
-        perturbation4 = torch.tensor(np.random.uniform(low = -2 * self.delta, high = 2 * self.delta, size=(flattened_ind2_suffix.shape))).to(device)
-        # flattened_ind1_prefix += perturbation1
-        # flattened_ind2_prefix += perturbation2
-        # flattened_ind1_suffix += perturbation3
-        # flattened_ind2_suffix += perturbation4
 
         individual1[0][channel] = torch.cat((flattened_ind1_prefix, flattened_ind2_suffix), dim=0).view(self.shape[2],
                                                                                                         self.shape[3])
@@ -169,10 +141,14 @@ class EvoAttack():
 
         return individual1, individual2
 
-    def selection(self):
-        tournament = [np.random.randint(0, len(self.current_pop)) for i in range(self.n_tournament)]
-        tournament_fitnesses = [self.fitnesses[tournament[i]] for i in range(self.n_tournament)]
-        res = self.current_pop[tournament[tournament_fitnesses.index(min(tournament_fitnesses))]].clone()
+    def selection(self, random):
+        if random:
+            random = np.random.randint(0, len(self.current_pop))
+            res = self.current_pop[random].clone()
+        else:
+            tournament = [np.random.randint(0, len(self.current_pop)) for i in range(self.n_tournament)]
+            tournament_fitnesses = [self.fitnesses[tournament[i]] for i in range(self.n_tournament)]
+            res = self.current_pop[tournament[tournament_fitnesses.index(min(tournament_fitnesses))]].clone()
         return res
 
     def crossover(self, individual1, individual2):
@@ -185,56 +161,65 @@ class EvoAttack():
     def evolve_new_gen(self):
         new_gen = []
         for i in range(self.pop_size // 2):
-            parent1 = self.selection()
-            parent2 = self.selection()
             if (self.explore):
+                parent1 = self.selection(random=True)
+                parent2 = self.selection(random=True)
                 offspring1, offspring2 = self.crossover(parent1, parent2)
                 offspring1 = self.vertical_mutation(offspring1)
                 offspring2 = self.horizontal_mutation(offspring2)
-                new_gen.append(offspring1)
-                new_gen.append(offspring2)
             else:
-                elitist = self.get_best_individual()
+                offspring2 = self.selection(random=False)
+                offspring1 = self.get_best_individual()
                 prob = np.random.rand()
                 if (prob > 0.25):
-                    parent1 = self.local_mutate(parent1)
-                new_gen.append(elitist)
-                new_gen.append(parent1)
+                    offspring2 = self.local_mutate(offspring2)
+
+            new_gen.append(offspring1)
+            new_gen.append(offspring2)
         self.current_pop = new_gen
 
     def diversity(self):
         n = len(self.current_pop)
         average_ind = sum(self.current_pop) / n
+        diagonal = ((2 * self.delta)) * np.sqrt(self.shape[1] * self.shape[2] * self.shape[3])
         summation = 0
         for ind in self.current_pop:
             summation += (ind - average_ind) ** 2
-        result = torch.sum(summation) / (self.delta * 2 * n)
+        result = torch.sum(torch.sqrt(summation)) / (diagonal * n)
         return result
+
+    def reset(self):
+        print('Reset!')
+        self.current_pop = [self.vertical_mutation(self.img.clone()) for i in range(self.pop_size)]
+        self.n_tournament = 2
+        self.perturbed_pixels = self.img.shape[2]
+        self.kernel_size = (self.img.cpu().numpy().shape[2] // 2) - 1
+        self.num_plateus = 0
+        self.rho = 2
+        self.explore = False
+
+    def update(self):
+        self.perturbed_pixels = max(1, self.perturbed_pixels - 1)
+        self.n_tournament = min(self.n_tournament + 1, self.pop_size // 4)
+        self.kernel_size = max(3, self.kernel_size - 1)
+        self.num_plateus += 1
+        self.rho = max(0.15, 2 * ((0.9) ** self.num_plateus))
+        print(f'Rho: {self.rho:.5f}')
 
     def evolve(self):
         gen = 0
-        low_diversity = 120
-        high_diversity = 120
         while gen < self.n_gen and not self.stop_criterion():
 
             if gen % (self.n_gen // 5) == 0:
-                print('Reset!')
-                self.current_pop = [self.vertical_mutation(self.img.clone()) for i in range(self.pop_size)]
-                self.n_tournament = 2
-                self.perturbed_pixels = self.img.shape[2]
-                self.kernel_size = (self.img.cpu().numpy().shape[2] // 2) - 1
-                self.num_plateus = 0
-                self.best_individual_fitness = math.inf
-                low_diversity = 120
-                high_diversity = 120
+                self.reset()
 
             diversity = self.diversity()
-            print(f'Diversity: {diversity:.3f}')
+            print(f'Diversity: {diversity:.6f}')
 
-            if diversity < low_diversity:
+            if diversity < self.low_diversity:
                 self.explore = True
                 print(f'Explore!')
-            elif diversity > high_diversity:
+            elif diversity > self.high_diversity:
                 self.explore = False
                 print(f'Exploit!')
 

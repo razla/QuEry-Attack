@@ -1,26 +1,41 @@
-from art.estimators.classification import PyTorchClassifier
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
+import argparse
 import torch
 import copy
+import sys
 
-from models.mobilenetv2 import mobilenet_v2
-from models.googlenet import googlenet
+from models.model import ConvNet
+from models.resnet import resnet50
+from models.inception import inception_v3
+from models.vgg import vgg16_bn
+from utils import get_model
 
 import models
 
+models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn']
+datasets_names = ['mnist', 'imagenet', 'cifar10', 'svhn']
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def load_dataset():
-    train_set = datasets.SVHN('./data', split='train', download=True,
-                  transform=transforms.Compose([transforms.ToTensor(),
-                                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
-    test_set = datasets.SVHN('./data', split='test', download=True,
-                              transform=transforms.Compose([transforms.ToTensor(),
-                                                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+def load_dataset(dataset):
+    if dataset == 'svhn':
+        train_set = datasets.SVHN('./data', split='train', download=True,
+                      transform=transforms.Compose([transforms.ToTensor(),
+                                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+        test_set = datasets.SVHN('./data', split='test', download=True,
+                                  transform=transforms.Compose([transforms.ToTensor(),
+                                                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+    elif dataset == 'mnist':
+        train_set = datasets.MNIST('./data', train=True, download=True,
+                                  transform=transforms.Compose(
+                                      [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]))
+        test_set = datasets.MNIST('./data', train=False, download=True,
+                                  transform=transforms.Compose(
+                                      [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]))
 
     train_loader = DataLoader(train_set, batch_size=64, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=64, shuffle=True)
@@ -86,10 +101,23 @@ def train_model(net, n_epochs, train_loader, test_loader, lr, weight_decay):
     return net.eval(), history
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Runs Evolutionary Adversarial Attacks on various Deep Learning models")
+    parser.add_argument("--model", "-m", choices=['ALL'] + models_names, default='custom',
+                        help="Run only specific model, or 'ALL' models")
+    parser.add_argument("--dataset", "-da", choices=['ALL'] + datasets_names, default='cifar10',
+                        help="Run only specific dataset, or 'ALL' datasets")
+    args = parser.parse_args()
+    model_name = args.model
+    dataset = args.dataset
     n_epochs = 200
     lr = 0.01
     weight_decay = 1e-6
-    train_loader, test_loader = load_dataset()
-    net = googlenet(pretrained=True).to(device)
+    train_loader, test_loader = load_dataset(dataset)
+    net = ConvNet(in_channels=1, fc_dims=[128, 64, 10])
+
+    net.to(device)
+
     model, history = train_model(net, n_epochs, train_loader, test_loader, lr, weight_decay)
-    torch.save(model, f'./models/state_dicts/svhn_googlenet_model.pth')
+
+    torch.save(model, f'./models/state_dicts/{dataset}_model.pth')

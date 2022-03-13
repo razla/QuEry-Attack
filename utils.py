@@ -1,28 +1,67 @@
+from art.estimators.classification import PyTorchClassifier
 from torchvision.utils import save_image
-import torchvision.models as models
 from torchvision import transforms
+import torchvision.models
 from pathlib import Path
+import torch.nn as nn
+import numpy as np
 import torch
 
-from models.googlenet import googlenet
-from models.densenet import densenet121, densenet169
-from models.resnet import resnet18
-from models.mobilenetv2 import mobilenet_v2
+from models.inception import inception_v3
+from models.resnet import resnet50
+from models.vgg import vgg16_bn
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 
+def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False):
+    classifier = PyTorchClassifier(
+        model=init_model,
+        clip_values=(min_pixel_value, max_pixel_value),
+        loss=nn.CrossEntropyLoss(),
+        input_shape=x_test[0].shape,
+        nb_classes=10,
+    )
+    if to_tensor:
+        x_test = torch.from_numpy(x_test)
+    x_test = normalize(dataset, x_test)
+    predictions = classifier.predict(x_test)
+    accuracy = np.sum(np.argmax(predictions, axis=1) == np.array(y_test)) / len(y_test)
+    print("Accuracy on benign test examples: {}%".format(accuracy * 100))
+    return accuracy
+
+def correctly_classified(model, x, y):
+    softmax = nn.Softmax(dim=1)
+    return y == torch.argmax(softmax(model(x)))
+
 def get_model(model_name, dataset):
     if model_name == 'custom':
-        return torch.load(Path('models/state_dicts') / f'{dataset}_model.pth', map_location=torch.device(device))
+        model = torch.load(Path('../models/state_dicts') / f'{dataset}_model.pth', map_location=torch.device(device)).eval()
     elif dataset=='cifar10':
-        return globals()[model_name](pretrained=True).to(device)
-    elif dataset=='imagenet':
-        return models.mobilenet_v2(pretrained=True).to(device)
+        model = globals()[model_name](pretrained=True).to(device).eval()
     elif dataset=='svhn':
-        return torch.load(Path('models/state_dicts') / f'{dataset}_{model_name}_model.pth', map_location=torch.device(device))
+        model = torch.load(Path('../models/state_dicts') / f'{dataset}_{model_name}_model.pth', map_location=torch.device(device))
+    elif dataset=='imagenet':
+        if model_name == 'vgg16_bn':
+            model = torchvision.models.vgg16_bn(pretrained=True).to(device).eval()
+        elif model_name == 'resnet50':
+            model = torchvision.models.resnet50(pretrained=True).to(device).eval()
+        elif model_name =='inception_v3':
+            model = torchvision.models.inception_v3(pretrained=True).to(device).eval()
     else:
         raise Exception('No such dataset!')
+    return model
+
+def normalize(dataset, images):
+    if dataset == 'cifar10':
+        images = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616))(images)
+    elif dataset == 'mnist':
+        images = transforms.Normalize( (0.1307,), (0.3081,))(images)
+    elif dataset == 'imagenet':
+        images = transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))(images)
+    elif dataset == 'svhn':
+        images = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(images)
+    return images
 
 def inv_normalize(dataset):
     if dataset == 'cifar10':

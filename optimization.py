@@ -3,14 +3,12 @@ dataset_name = None
 
 import optuna
 from optuna.trial import TrialState
-from attacks.opt_objectives import square_objective, evo_objective,\
-    zoo_objective, simba_objective
-
+from attacks.opt_objectives import evo_objective
 
 if __name__ == '__main__':
 
     study = optuna.create_study(direction="minimize")
-    study.optimize(simba_objective, n_trials=100, timeout=None)
+    study.optimize(evo_objective, n_trials=50, timeout=None)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
