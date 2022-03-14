@@ -14,7 +14,7 @@ from models.vgg import vgg16_bn
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Running on {device}")
 
-def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False):
+def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=False, to_normalize=False):
     classifier = PyTorchClassifier(
         model=init_model,
         clip_values=(min_pixel_value, max_pixel_value),
@@ -24,23 +24,25 @@ def compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_p
     )
     if to_tensor:
         x_test = torch.from_numpy(x_test)
-    x_test = normalize(dataset, x_test)
+    if to_normalize:
+        x_test = normalize(dataset, x_test)
     predictions = classifier.predict(x_test)
     accuracy = np.sum(np.argmax(predictions, axis=1) == np.array(y_test)) / len(y_test)
-    print("Accuracy on benign test examples: {}%".format(accuracy * 100))
+    print("Accuracy: {}%".format(accuracy * 100))
     return accuracy
 
-def correctly_classified(model, x, y):
+def correctly_classified(dataset, model, x, y):
     softmax = nn.Softmax(dim=1)
+    x = normalize(dataset, x)
     return y == torch.argmax(softmax(model(x)))
 
-def get_model(model_name, dataset):
+def get_model(model_name, dataset, path):
     if model_name == 'custom':
-        model = torch.load(Path('../models/state_dicts') / f'{dataset}_model.pth', map_location=torch.device(device)).eval()
+        model = torch.load(Path(path) / f'{dataset}_model.pth', map_location=torch.device(device)).eval()
     elif dataset=='cifar10':
         model = globals()[model_name](pretrained=True).to(device).eval()
     elif dataset=='svhn':
-        model = torch.load(Path('../models/state_dicts') / f'{dataset}_{model_name}_model.pth', map_location=torch.device(device))
+        model = torch.load(Path(path) / f'{dataset}_{model_name}_model.pth', map_location=torch.device(device))
     elif dataset=='imagenet':
         if model_name == 'vgg16_bn':
             model = torchvision.models.vgg16_bn(pretrained=True).to(device).eval()
@@ -56,7 +58,7 @@ def normalize(dataset, images):
     if dataset == 'cifar10':
         images = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616))(images)
     elif dataset == 'mnist':
-        images = transforms.Normalize( (0.1307,), (0.3081,))(images)
+        images = transforms.Normalize( (0.5,), (0.5,))(images)
     elif dataset == 'imagenet':
         images = transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))(images)
     elif dataset == 'svhn':
@@ -70,7 +72,7 @@ def inv_normalize(dataset):
                 std=[1 / 0.2471, 1 / 0.2435, 1 / 0.2616]
             )
     elif dataset == 'mnist':
-        return transforms.Normalize(mean = [-0.1307 / 0.3081], std=[1 / 0.3081])
+        return transforms.Normalize(mean = [-0.5 / 0.5], std=[1 / 0.5])
 
     elif dataset == 'svhn':
         return transforms.Normalize(
@@ -85,11 +87,11 @@ def inv_normalize(dataset):
     else:
         return 'WTF'
 
-def inv_normalize_and_save(dataset, img, best_individual, not_best_individual):
-    orig = inv_normalize(dataset)(img)
+def inv_normalize_and_save(img, best_individual, not_best_individual):
+    orig = img
     if (not_best_individual != None and best_individual != None):
-        good_attack = inv_normalize(dataset)(best_individual)
-        bad_attack = inv_normalize(dataset)(not_best_individual)
+        good_attack = best_individual
+        bad_attack = not_best_individual
         save_image(good_attack, 'good.png')
         save_image(bad_attack, 'bad.png')
         save_image(orig, 'orig.png')

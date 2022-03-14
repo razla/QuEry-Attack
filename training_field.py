@@ -110,7 +110,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
     dataset = args.dataset
-    n_epochs = 200
+    n_epochs = 300
     lr = 0.01
     weight_decay = 1e-6
     train_loader, test_loader = load_dataset(dataset)
@@ -120,4 +120,4 @@ if __name__ == '__main__':
 
     model, history = train_model(net, n_epochs, train_loader, test_loader, lr, weight_decay)
 
-    torch.save(model, f'./models/state_dicts/{dataset}_model.pth')
+    torch.save(model, f'../models/state_dicts/{dataset}_model.pth')

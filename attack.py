@@ -85,6 +85,7 @@ class EvoAttack():
 
     def stop_criterion(self):
         if (not self.explore and self.fitness(self.current_pop)):
+        # if (self.fitness(self.current_pop)):
             diversity = self.diversity()
             print(f'Diversity stop criterion: {diversity}')
             self.stop = True
@@ -181,7 +182,7 @@ class EvoAttack():
     def diversity(self):
         n = len(self.current_pop)
         average_ind = sum(self.current_pop) / n
-        diagonal = ((2 * self.delta)) * np.sqrt(self.shape[1] * self.shape[2] * self.shape[3])
+        diagonal = (2 ** (2 * self.delta)) * self.shape[1] * self.shape[2] * self.shape[3]
         summation = 0
         for ind in self.current_pop:
             summation += (ind - average_ind) ** 2
@@ -203,14 +204,14 @@ class EvoAttack():
         self.n_tournament = min(self.n_tournament + 1, self.pop_size // 4)
         self.kernel_size = max(3, self.kernel_size - 1)
         self.num_plateus += 1
-        self.rho = max(0.15, 2 * ((0.9) ** self.num_plateus))
+        self.rho = max(0.15, 2 * ((0.95) ** self.num_plateus))
         print(f'Rho: {self.rho:.5f}')
 
     def evolve(self):
         gen = 0
         while gen < self.n_gen and not self.stop_criterion():
 
-            if gen % (self.n_gen // 5) == 0:
+            if gen % (self.n_gen // 4) == 0:
                 self.reset()
 
             diversity = self.diversity()
@@ -227,7 +228,7 @@ class EvoAttack():
             gen += 1
 
         best_individual = self.get_best_individual()
-        inv_normalize_and_save(self.dataset, self.img, self.best_individual, self.not_best_individual)
+        inv_normalize_and_save(self.img, self.best_individual, self.not_best_individual)
         if not self.stop_criterion():
             print_failure(self.softmax, self.model, self.img, self.n_queries, self.label, best_individual, gen)
         else:

@@ -8,7 +8,7 @@ from attacks.opt_objectives import evo_objective
 if __name__ == '__main__':
 
     study = optuna.create_study(direction="minimize")
-    study.optimize(evo_objective, n_trials=50, timeout=None)
+    study.optimize(evo_objective, n_trials=100, timeout=None)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])

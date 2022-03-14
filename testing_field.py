@@ -7,11 +7,11 @@ from utils import get_model, correctly_classified, compute_accuracy
 from datasets_loader import load_dataset
 from attacks.square_attack import square_attack
 
+MODEL_PATH = './models/state_dicts'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn']
 datasets_names = ['mnist', 'imagenet', 'cifar10', 'svhn']
 metrics = ['l2', 'linf']
-n_iter = 0
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -28,6 +28,10 @@ if __name__ == '__main__':
                         help="Number of generations")
     parser.add_argument("--images", "-i", type=int, default=3,
                         help="Maximal number of images from dataset to process")
+    parser.add_argument("--d_low", "-dl", type=float, default=1e-5,
+                        help="Low diversity threshold")
+    parser.add_argument("--d_high", "-dh", type=float, default=1e-3,
+                        help="High diversity threshold")
     args = parser.parse_args()
 
     n_images = args.images
@@ -36,13 +40,15 @@ if __name__ == '__main__':
     delta = args.delta
     pop_size = args.pop
     n_gen = args.gen
+    d_low_sugg = args.d_low
+    d_high_sugg = args.d_high
     n_iter = n_gen * pop_size
 
     (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(dataset)
 
-    init_model = get_model(model, dataset)
+    init_model = get_model(model, dataset, MODEL_PATH)
 
-    compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value)
+    compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_normalize=True)
 
     count = 0
     success_count = 0
@@ -55,7 +61,7 @@ if __name__ == '__main__':
         if count == n_images:
             break
 
-        if correctly_classified(init_model, x, y) and count < n_images:
+        if correctly_classified(dataset, init_model, x, y) and count < n_images:
             count += 1
             images_indices.append(i)
             adv, n_queries, success = EvoAttack(dataset=dataset,
@@ -68,8 +74,8 @@ if __name__ == '__main__':
                                                 kernel_size=(x.cpu().numpy().shape[2] // 2) - 1,
                                                 min_pixel = min_pixel_value,
                                                 max_pixel = max_pixel_value,
-                                                d_low=1e-5,
-                                                d_high=2e-3).evolve()
+                                                d_low=d_low_sugg,
+                                                d_high=d_high_sugg).evolve()
             adv = adv.cpu().numpy()
             if count == 1:
                 evo_x_test_adv = adv
@@ -87,16 +93,16 @@ if __name__ == '__main__':
         min_ball = torch.tile(torch.maximum(x_test[[i]] - delta, min_pixel_value), (1, 1))
         max_ball = torch.tile(torch.minimum(x_test[[i]] + delta, max_pixel_value), (1, 1))
 
-        square_adv, square_n_queries = square_attack(init_model, min_ball, max_ball, x_test[[i]], i, square_adv, n_iter)
+        square_adv, square_n_queries = square_attack(init_model, min_ball, max_ball, x_test[[i]], i, square_adv, n_iter, delta)
         square_queries.append(square_n_queries)
 
-    square_accuracy = compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_tensor=True)
+    square_accuracy = compute_accuracy(dataset, init_model, square_adv, y_test, min_pixel_value, max_pixel_value, to_tensor=True, to_normalize=True)
 
     print('########################################')
     print(f'Summary:')
     print(f'\tDataset: {dataset}')
     print(f'\tModel: {model}')
-    print(f'\tMetric: {metrics[0]}, delta: {delta:.4f}')
+    print(f'\tMetric: linf, delta: {delta:.4f}')
     print(f'\tSquare:')
     print(f'\t\tSquare - test accuracy: {square_accuracy * 100:.4f}%')
     print(f'\t\tSquare - queries: {square_queries}')
