@@ -107,12 +107,18 @@ if __name__ == '__main__':
                         help="Run only specific model, or 'ALL' models")
     parser.add_argument("--dataset", "-da", choices=['ALL'] + datasets_names, default='cifar10',
                         help="Run only specific dataset, or 'ALL' datasets")
+    parser.add_argument("--epochs", "-ep", type=int, default=100,
+                        help="Number of epochs")
+    parser.add_argument("--lr", "-l", type=float, default=0.01,
+                        help="Learning rate")
+    parser.add_argument("--weight_dec", "-w", type=float, default=1e-6,
+                        help="Weight decay")
     args = parser.parse_args()
     model_name = args.model
     dataset = args.dataset
-    n_epochs = 300
-    lr = 0.01
-    weight_decay = 1e-6
+    n_epochs = args.epochs
+    lr = args.lr
+    weight_decay = args.weight_dec
     train_loader, test_loader = load_dataset(dataset)
     net = ConvNet(in_channels=1, fc_dims=[128, 64, 10])
 
