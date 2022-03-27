@@ -3,6 +3,7 @@ from torchvision.utils import save_image
 from torchvision import transforms
 import torchvision.models
 from pathlib import Path
+import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
 import torch
@@ -42,7 +43,10 @@ def get_model(model_name, dataset, path):
     elif dataset=='cifar10':
         model = globals()[model_name](pretrained=True).to(device).eval()
     elif dataset=='svhn':
-        model = torch.load(Path(path) / f'{dataset}_{model_name}_model.pth', map_location=torch.device(device))
+        if model_name == 'resnet50' or 'vgg16_bn' or 'inception_v3':
+            model = globals()[model_name](pretrained=True).to(device).eval()
+        else:
+            model = torch.load(Path(path) / f'{dataset}_{model_name}_model.pth', map_location=torch.device(device))
     elif dataset=='imagenet':
         if model_name == 'vgg16_bn':
             model = torchvision.models.vgg16_bn(pretrained=True).to(device).eval()
@@ -50,20 +54,33 @@ def get_model(model_name, dataset, path):
             model = torchvision.models.resnet50(pretrained=True).to(device).eval()
         elif model_name =='inception_v3':
             model = torchvision.models.inception_v3(pretrained=True).to(device).eval()
+        elif model_name == 'vit_l_16':
+            model = torchvision.models.vit_l_16(pretrained=True).to(device).eval()
     else:
         raise Exception('No such dataset!')
     return model
 
 def normalize(dataset, images):
     if dataset == 'cifar10':
-        images = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616))(images)
+        norm_images = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616))(images)
     elif dataset == 'mnist':
-        images = transforms.Normalize( (0.5,), (0.5,))(images)
+        norm_images = transforms.Normalize( (0.5,), (0.5,))(images)
     elif dataset == 'imagenet':
-        images = transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))(images)
+        norm_images = transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))(images)
     elif dataset == 'svhn':
-        images = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(images)
-    return images
+        norm_images = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(images)
+    return norm_images
+
+def get_normalization(dataset):
+    if dataset == 'cifar10':
+        values = ((0.4914, 0.4822, 0.4465), (0.2471, 0.2435, 0.2616))
+    elif dataset == 'mnist':
+        values = ((0.5,), (0.5,))
+    elif dataset == 'imagenet':
+        values = ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    elif dataset == 'svhn':
+        values = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    return values
 
 def inv_normalize(dataset):
     if dataset == 'cifar10':
@@ -96,30 +113,33 @@ def inv_normalize_and_save(img, best_individual, not_best_individual):
         save_image(bad_attack, 'bad.png')
         save_image(orig, 'orig.png')
 
-def print_initialize(softmax, model, img, label):
+def print_initialize(dataset, model, img, label):
+    normalized_img = normalize(dataset, img)
     print("################################")
     print(f'Correct class: {label}')
-    print(f'Initial class prediction: {model(img).argmax(dim=1).item()}')
-    print(f'Initial probability: {softmax(model(img)).max():.4f}')
+    print(f'Initial class prediction: {model(normalized_img).argmax(dim=1).item()}')
+    print(f'Initial probability: {F.softmax(model(normalized_img), dim=1).max():.4f}')
     print("################################")
 
-def print_success(softmax, model, img, n_queries, label, best_individual, gen):
+def print_success(dataset, model, img, n_queries, label, best_individual, gen):
+    normalized_best_inv = normalize(dataset, best_individual)
     print("################################")
     print(f'Evolution succeeded in gen #{gen + 1}')
     print(f'Correct class: {label}')
-    print(f'Current prediction: {model(best_individual).argmax(dim=1).item()}')
+    print(f'Current prediction: {model(normalized_best_inv).argmax(dim=1).item()}')
     print(
-        f'Current probability (orig class): {softmax(model(best_individual))[0][label].item():.4f}')
+        f'Current probability (orig class): {F.softmax(model(normalized_best_inv), dim = 1)[0][label].item():.4f}')
     l_infinity = torch.norm(img - best_individual, p=float('inf')).item()
     print(f'L infinity: {l_infinity:.4f}')
     print(f'Number of queries: {n_queries}')
     print("################################")
 
-def print_failure(softmax, model, img, n_queries, label, best_individual, gen):
+def print_failure(dataset, model, img, n_queries, label, best_individual, gen):
+    normalized_best_inv = normalize(dataset, best_individual)
     print("################################")
     print("Evolution failed")
     print(f'Correct class: {label}')
-    print(f'Current prediction: {model(best_individual).argmax(dim=1).item()}')
+    print(f'Current prediction: {model(normalized_best_inv).argmax(dim=1).item()}')
     print(
-        f'Current probability (orig class): {softmax(model(best_individual))[0][label].item():.4f}')
+        f'Current probability (orig class): {F.softmax(model(normalized_best_inv), dim=1)[0][label].item():.4f}')
     print("################################")

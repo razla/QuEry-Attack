@@ -2,7 +2,7 @@ import numpy as np
 import argparse
 import torch
 
-from attack import EvoAttack
+from attack2 import EvoAttack
 from utils import get_model
 from datasets_loader import load_dataset
 from testing_field import correctly_classified, compute_accuracy
@@ -18,7 +18,7 @@ parser.add_argument("--dataset", "-d", choices=['ALL'] + datasets_names, default
                     help="Run only specific dataset, or 'ALL' datasets")
 parser.add_argument("--images", "-i", type=int, default=20,
                     help="Number of images")
-parser.add_argument("--delta", "-de", type=float, default=0.05,
+parser.add_argument("--eps", "-e", type=float, default=0.05,
                     help="Perturbation")
 parser.add_argument("--gen", "-g", type=int, default=40,
                     help="Number of generations")
@@ -32,11 +32,11 @@ args = parser.parse_args()
 model_name = args.model
 dataset_name = args.dataset
 n_images = args.images
-delta = args.delta
-gen = args.gen
-pop = args.pop
-d_low_sugg = args.d_low
-d_high_sugg = args.d_high
+eps = args.eps
+n_gen = args.gen
+pop_size = args.pop
+low_d_sugg = args.d_low
+high_d_sugg = args.d_high
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -45,8 +45,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def evo_objective(trial):
     global x_test, y_test, model_name, dataset_name
 
-    d_low = trial.suggest_loguniform('d_low', d_low_sugg, 5e-1)
-    d_high = trial.suggest_loguniform('d_high', d_high_sugg, 5e-1)
+    low_d = trial.suggest_loguniform('d_low', low_d_sugg, 5e-3)
+    high_d = trial.suggest_loguniform('d_high', high_d_sugg, 1e-2)
 
     init_model = get_model(model_name, dataset_name, MODEL_PATH)
 
@@ -66,25 +66,22 @@ def evo_objective(trial):
         if correctly_classified(dataset_name, init_model, x, y) and count < n_images:
             count += 1
             correctly_classified_images_indices.append(i)
-            adv, n_queries, success = EvoAttack(dataset=dataset_name,
-                                                model=init_model,
-                                                img=x,
-                                                label=y,
-                                                delta=delta,
-                                                n_gen=gen,
-                                                pop_size=pop,
-                                                kernel_size=(x.cpu().numpy().shape[2] // 2) - 1,
-                                                min_pixel=min_pixel_value,
-                                                max_pixel=max_pixel_value,
-                                                d_low=d_low,
-                                                d_high=d_high).evolve()
+            adv, n_queries = EvoAttack(dataset=dataset_name,
+                                        model=init_model,
+                                         x=x,
+                                         y=y,
+                                         eps=eps,
+                                         n_gen=n_gen,
+                                         pop_size=pop_size,
+                                         low_d=low_d,
+                                         high_d=high_d).generate()
             print(f'Queries: {n_queries}')
             adv = adv.cpu().numpy()
             if count == 1:
                 evo_x_test_adv = adv
             else:
                 evo_x_test_adv = np.concatenate((adv, evo_x_test_adv), axis=0)
-            if success:
+            if adv.any() != None:
                 success_count += 1
             queries.append(n_queries)
 

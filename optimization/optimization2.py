@@ -3,7 +3,7 @@ dataset_name = None
 
 import optuna
 from optuna.trial import TrialState
-from attacks.opt_objectives import evo_objective
+from evo_attack.optimization.opt_objectives2 import evo_objective
 
 if __name__ == '__main__':
 

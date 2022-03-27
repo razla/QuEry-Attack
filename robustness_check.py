@@ -1,3 +1,5 @@
+from robustbench.utils import load_model
+import foolbox as fb
 import numpy as np
 import argparse
 import torch
@@ -10,7 +12,7 @@ from utils import compute_accuracy
 
 MODEL_PATH = './models/state_dicts'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16']
+models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16', 'salman']
 datasets_names = ['mnist', 'imagenet', 'cifar10']
 
 if __name__ == '__main__':
@@ -42,7 +44,8 @@ if __name__ == '__main__':
     n_iter = n_gen * pop_size
 
     (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(dataset)
-    init_model = get_model(model, dataset, MODEL_PATH)
+    init_model = load_model(model_name='Salman2020Do_50_2', dataset='imagenet', threat_model='Linf')
+    init_model = fb.PyTorchModel(init_model, bounds=(0, 1))
     # compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_normalize=True)
     count = 0
     success_count = 0
