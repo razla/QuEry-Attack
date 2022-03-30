@@ -4,13 +4,14 @@ from operator import itemgetter
 import numpy as np
 import random
 import torch
+from copy import deepcopy
 
 from utils import normalize
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class EvoAttack():
-    def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, targeted=False):
+    def __init__(self, dataset, model, x, y, n_gen=500, pop_size=40, eps=0.3, tournament=35, defense=False):
         self.dataset = dataset
         self.model = model
         self.x = x
@@ -22,9 +23,9 @@ class EvoAttack():
         self.eps = eps
         self.best_x_hat = None
         self.queries = 0
+        self.defense = defense
         self.min_ball = torch.tile(torch.maximum(self.x - eps, torch.tensor(0)), (1, 1))
         self.max_ball = torch.tile(torch.minimum(self.x + eps, torch.tensor(1)), (1, 1))
-        self.targeted = targeted
 
     def generate(self):
         save_image(self.x, 'orig.png')
@@ -34,18 +35,21 @@ class EvoAttack():
             self.fitness(cur_pop)
             new_pop = []
             elite = self.elitism(cur_pop)
+
             new_pop.append([elite, np.inf])
-            for i in range((self.pop_size // 3) - 1):
+            for i in range((self.pop_size - 1) // 3):
                 parent1 = self.selection(cur_pop)
                 parent2 = self.selection(cur_pop)
                 offspring1, offspring2 = self.crossover(parent1, parent2)
                 mut_offspring1 = self.mutation((offspring1, np.inf))
                 mut_offspring2 = self.mutation((offspring2, np.inf))
+                offspring1 = self.project(offspring1)
                 new_pop.append([offspring1, np.inf])
                 new_pop.append([mut_offspring1, np.inf])
                 new_pop.append([mut_offspring2, np.inf])
 
             print(f'Elitist: {min(cur_pop, key=itemgetter(1))[1]:.5f}')
+
             cur_pop = new_pop
             gen += 1
 
@@ -96,16 +100,21 @@ class EvoAttack():
         for i in range(len(cur_pop)):
             x_hat, fitness = cur_pop[i]
             x_hat_l2 = F.mse_loss(x_hat, self.x)
-            n_x_hat = normalize(self.dataset, x_hat)
+            def_x_hat = x_hat.clone()
+            if self.defense:
+                def_x_hat = self.defense(def_x_hat.cpu().numpy())[0]
+                def_x_hat = torch.tensor(def_x_hat).to(device)
+            n_x_hat = normalize(self.dataset, def_x_hat)
             probs = F.softmax(self.model(n_x_hat), dim = 1).squeeze()
-            if not self.targeted:
-                objective = probs[self.y] - max(x for i, x, in enumerate(probs) if not i == self.y)
-            else:
-                objective = max(x for i, x, in enumerate(probs) if not i == self.targeted) - probs[self.targeted]
+            objective = probs[self.y] - max(x for i, x, in enumerate(probs) if not i == self.y)
             cur_pop[i] = [x_hat, objective + x_hat_l2]
 
     def get_label(self, x_hat):
-        n_x_hat = normalize(self.dataset, x_hat)
+        def_x_hat = x_hat.clone()
+        if self.defense:
+            def_x_hat = self.defense(def_x_hat.cpu().numpy())[0]
+            def_x_hat = torch.tensor(def_x_hat).to(device)
+        n_x_hat = normalize(self.dataset, def_x_hat)
         return torch.argmax(F.softmax(self.model(n_x_hat), dim = 1))
 
     def termination_condition(self, cur_pop, gen):
@@ -115,17 +124,12 @@ class EvoAttack():
         for [x_hat, _] in cur_pop:
             y_hat = self.get_label(x_hat)
             self.queries += 1
-            if not self.targeted:
-                if y_hat != self.y:
-                    self.best_x_hat = x_hat
-                    save_image(x_hat, 'good.png')
-                    return True
-                else:
-                    save_image(x_hat, 'bad.png')
+            if y_hat != self.y:
+                self.best_x_hat = x_hat
+                save_image(x_hat, 'good.png')
+                return True
             else:
-                if y_hat == self.targeted:
-                    self.best_x_hat = x_hat
-                    return True
+                save_image(x_hat, 'bad.png')
         return False
 
     def project(self, x_hat):

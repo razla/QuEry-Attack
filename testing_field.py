@@ -2,7 +2,7 @@ import numpy as np
 import argparse
 import torch
 
-from utils import get_model, correctly_classified, print_initialize
+from utils import get_model, correctly_classified, print_initialize, print_success
 from data.datasets_loader import load_dataset
 from attacks.square_attack import square_attack
 from attack import EvoAttack
@@ -62,14 +62,15 @@ if __name__ == '__main__':
             adv, n_queries = EvoAttack(dataset=dataset, model=init_model, x=x, y=y, eps=eps, n_gen=n_gen, pop_size=pop_size,tournament=tournament).generate()
 
             if not isinstance(adv, type(None)):
-
+                success_count += 1
                 adv = adv.cpu().numpy()
-                if count == 1:
+                if success_count == 1:
                     evo_x_test_adv = adv
                 else:
                     evo_x_test_adv = np.concatenate((adv, evo_x_test_adv), axis=0)
-                success_count += 1
-                print('Success!')
+                print_success(dataset, init_model, n_queries, y, adv)
+            else:
+                print('Evolution failed!')
             evo_queries.append(n_queries)
 
     x_test, y_test = x_test[images_indices], y_test[images_indices]
