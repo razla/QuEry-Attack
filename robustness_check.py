@@ -11,7 +11,7 @@ from utils import compute_accuracy
 
 MODEL_PATH = './models/state_dicts'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16', 'salman', 'gowal']
+models_names = ['custom', 'inception_v3', 'resnet50', 'vgg16_bn', 'vit_l_16', 'salman', 'gowal', 'rebuffi']
 datasets_names = ['mnist', 'imagenet', 'cifar10']
 
 if __name__ == '__main__':

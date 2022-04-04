@@ -44,6 +44,8 @@ def get_model(model_name, dataset, path):
     elif dataset=='cifar10':
         if model_name == 'gowal':
             model = load_model(model_name='Gowal2020Uncovering_70_16', dataset='cifar10', threat_model='Linf').to(device)
+        elif model_name == 'rebuffi':
+            model = load_model(model_name='Rebuffi2021Fixing_70_16_cutmix_extra', dataset='cifar10', threat_mode='Linf').to(device)
         else:
             model = globals()[model_name](pretrained=True).to(device).eval()
     elif dataset=='imagenet':
