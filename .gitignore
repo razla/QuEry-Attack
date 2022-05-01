@@ -1,7 +1,7 @@
 .idea/
 __pycache__/
 data/
-models/state_dicts/
+models/state_dicts/inception_v3.pt
 figures/
 pycharm_session_*.log
 slurm-*.out
