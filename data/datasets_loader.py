@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import torch
 torch.manual_seed(1)
 
-def load_dataset(name='mnist'):
+def load_dataset(name='mnist', imagenet_path='/cs_storage/public_datasets/ImageNet'):
     if name == 'mnist':
         test_set = datasets.MNIST('./data', train=False, download=True,
                                   transform=transforms.Compose([transforms.ToTensor(), ]))
@@ -11,7 +11,7 @@ def load_dataset(name='mnist'):
         test_set = datasets.CIFAR10('./data', train=False, download=True,
                                     transform=transforms.Compose([transforms.ToTensor(),]))
     elif name == 'imagenet':
-        test_set = datasets.ImageNet('/cs_storage/public_datasets/ImageNet', split='val',
+        test_set = datasets.ImageNet(imagenet_path, split='val',
                                     transform=transforms.Compose([transforms.Resize(256),
                                                                   transforms.CenterCrop(224),
                                                                   transforms.ToTensor(),
