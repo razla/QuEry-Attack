@@ -24,11 +24,12 @@ efficiency.
 
 ## Prerequisites
 
-1. Python3 (>=3.6)
+1. Python3 (>=3.9)
 
 ## Required Python Packages
 
-1. pytorch >= 11.0
+1. numpy >= 1.22.3
+2. torch (with cuda) >= 11.3
 
 ## Prepare the environment
     conda create -n evo_attack numpy pytorch
@@ -40,4 +41,5 @@ efficiency.
 - Unzip it, to get `state_dicts/*.pt`
 
 ## Run
-- python main.py --model=inception_v3 --dataset=cifar10 --eps=0.025 --pop=70 --gen=600 --images=1 --tournament=25
+- python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament>
+- For MNIST dataset, run the above command with --model=custom
