@@ -23,7 +23,12 @@ Attackar, both in terms of accuracy score and query
 efficiency.
 
 ## Prepare the environment
-1. pip install -r requirements.txt
+1. python=3.8.12
+2. numpy
+3. PyTorch+CUDA=11.3
+4. adversarial-robustness-toolbox
+5. tensorflow
+6. robustbench
 
 ## Download the trained models weights
 2. Download models' weights from this link: [models weights](https://drive.google.com/file/d/1LKLicAXgL-Q9QFtvMWDkHN-8ESPBNjtO/view?usp=sharing)
@@ -32,6 +37,7 @@ efficiency.
 ## Run
 - python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament>
 - For MNIST dataset, run the above command with --model=custom
+- For ImageNet dataset, change the IMAGENET_PATH global variable in ./data/datasets_loader.py file
 
 ![alt text](figures/MNIST.jpg)
 ![alt text](figures/CIFAR10.jpg)
