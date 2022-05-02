@@ -22,13 +22,9 @@ Our results demonstrate the superior performance of
 Attackar, both in terms of accuracy score and query
 efficiency.
 
-## Prepare the environment
+## Prerequisites
 1. python=3.8.12
-2. numpy
-3. PyTorch+CUDA=11.3
-4. adversarial-robustness-toolbox
-5. tensorflow
-6. robustbench
+2. pip install -r requirements.txt
 
 ## Download the trained models weights
 2. Download models' weights from this link: [models weights](https://drive.google.com/file/d/1LKLicAXgL-Q9QFtvMWDkHN-8ESPBNjtO/view?usp=sharing)
