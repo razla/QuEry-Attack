@@ -30,6 +30,8 @@ if __name__ == '__main__':
                         help="Maximal number of images from dataset to process")
     parser.add_argument("--tournament", "-t", type=int, default=35,
                         help="Tournament selection")
+    parser.add_argument("--path", "-ip", default='/cs_storage/public_datasets/ImageNet',
+                        help="ImageNet dataset path")
     args = parser.parse_args()
 
     n_images = args.images
@@ -39,9 +41,10 @@ if __name__ == '__main__':
     eps = args.eps
     pop_size = args.pop
     n_gen = args.gen
+    imagenet_path = args.path
     n_iter = n_gen * pop_size
 
-    (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(dataset)
+    (x_test, y_test), min_pixel_value, max_pixel_value = load_dataset(dataset, imagenet_path)
     init_model = get_model(model, dataset, MODEL_PATH)
     # compute_accuracy(dataset, init_model, x_test, y_test, min_pixel_value, max_pixel_value, to_normalize=True)
     count = 0
@@ -73,18 +76,6 @@ if __name__ == '__main__':
                 print('Evolution failed!')
             evo_queries.append(n_queries)
 
-    x_test, y_test = x_test[images_indices], y_test[images_indices]
-
-    square_queries, square_adv = [], None
-    for i in range(len(x_test)):
-
-        min_ball = torch.tile(torch.maximum(x_test[[i]] - eps, min_pixel_value), (1, 1))
-        max_ball = torch.tile(torch.minimum(x_test[[i]] + eps, max_pixel_value), (1, 1))
-
-        square_adv, square_n_queries = square_attack(dataset, init_model, min_ball, max_ball, x_test[[i]], i, square_adv, n_iter, eps)
-        square_queries.append(square_n_queries)
-
-    square_accuracy = compute_accuracy(dataset, init_model, square_adv, y_test, min_pixel_value, max_pixel_value, to_tensor=True, to_normalize=True)
 
     print('########################################')
     print(f'Summary:')
@@ -92,10 +83,6 @@ if __name__ == '__main__':
     print(f'\tModel: {model}')
     print(f'\tTournament: {tournament}')
     print(f'\tMetric: linf, epsilon: {eps:.4f}')
-    print(f'\tSquare:')
-    print(f'\t\tSquare - test accuracy: {square_accuracy * 100:.4f}%')
-    print(f'\t\tSquare - queries: {square_queries}')
-    print(f'\t\tSquare - queries (median): {int(np.median(square_queries))}')
     print(f'\tEvo:')
     print(f'\t\tEvo - test accuracy: {(1 - (success_count / n_images)) * 100:.4f}%')
     print(f'\t\tEvo - queries: {evo_queries}')
