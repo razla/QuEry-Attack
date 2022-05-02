@@ -5,3 +5,4 @@ torchdiffeq==0.2.3
 torchvision==0.12.0
 tensorflow==2.8.0
 robustbench @ git+https://github.com/RobustBench/robustbench.git@f8690ed4fb4fb2a04439a336de6777742d34b897
+adversarial-robustness-toolbox==1.10.1

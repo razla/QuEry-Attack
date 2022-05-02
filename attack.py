@@ -1,4 +1,3 @@
-from torchvision.utils import save_image
 import torch.nn.functional as F
 from operator import itemgetter
 import numpy as np
@@ -28,7 +27,6 @@ class EvoAttack():
         self.max_ball = torch.tile(torch.minimum(self.x + eps, torch.tensor(1)), (1, 1))
 
     def generate(self):
-        save_image(self.x, 'orig.jpg')
         gen = 0
         cur_pop = self.init()
         while not self.termination_condition(cur_pop, gen):
@@ -126,10 +124,7 @@ class EvoAttack():
             self.queries += 1
             if y_hat != self.y:
                 self.best_x_hat = x_hat
-                save_image(x_hat, 'good.jpg')
                 return True
-            else:
-                save_image(x_hat, 'bad.jpg')
         return False
 
     def project(self, x_hat):
