@@ -22,23 +22,12 @@ Our results demonstrate the superior performance of
 Attackar, both in terms of accuracy score and query
 efficiency.
 
-## Prerequisites
-
-1. Python3 (>=3.9)
-
-## Required Python Packages
-
-1. numpy >= 1.22.3
-2. torch (with cuda) >= 11.3
-
 ## Prepare the environment
-    conda create -n evo_attack numpy pytorch
-    conda activate evo_attack
-    pip install piqa
+1. pip install -r requirements.txt
 
-## Download the trained models
-- Download model from Google Drive link at https://github.com/huyvnphan/PyTorch_CIFAR10
-- Unzip it, to get `state_dicts/*.pt`
+## Download the trained models weights
+2. Download models' weights from this link:
+3. Unzip it and place it in models/state_dicts/*.pt
 
 ## Run
 - python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament>
