@@ -32,3 +32,6 @@ efficiency.
 ## Run
 - python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament>
 - For MNIST dataset, run the above command with --model=custom
+
+![alt text](figures/MNIST.jpg)
+![alt text](figures/CIFAR10.jpg)
