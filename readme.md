@@ -31,7 +31,7 @@ efficiency.
 3. Unzip it and place it in models/state_dicts/*.pt
 
 ## Run
-- python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament>
+- python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament> --path=<imagenet_path>
 - For MNIST dataset, run the above command with --model=custom
 - For ImageNet dataset, change the IMAGENET_PATH global variable in ./data/datasets_loader.py file
 
