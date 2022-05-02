@@ -26,7 +26,7 @@ efficiency.
 1. pip install -r requirements.txt
 
 ## Download the trained models weights
-2. Download models' weights from this link:
+2. Download models' weights from this link: [models weights](https://drive.google.com/file/d/1LKLicAXgL-Q9QFtvMWDkHN-8ESPBNjtO/view?usp=sharing)
 3. Unzip it and place it in models/state_dicts/*.pt
 
 ## Run
