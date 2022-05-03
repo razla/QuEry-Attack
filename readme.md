@@ -33,6 +33,11 @@ efficiency.
 ## Run
     python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament> --path=<imagenet_path>
 - For MNIST dataset, run the above command with --model=custom
+- The values used in the paper are:
+  - pop_size=70
+  - gen=600
+  - images=200
+  - tournament=25
 
 ![alt text](figures/MNIST.jpg)
 ![alt text](figures/CIFAR10.jpg)
