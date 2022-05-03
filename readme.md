@@ -31,7 +31,7 @@ efficiency.
 3. Unzip it and place it in models/state_dicts/*.pt
 
 ## Run
-- python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament> --path=<imagenet_path>
+python main.py --model=<model_name> --dataset=<dataset_name> --eps=<epsilon> --pop=<pop_size> --gen=<n_gen> --images=<n_images> --tournament=<n_tournament> --path=<imagenet_path>
 - For MNIST dataset, run the above command with --model=custom
 
 ![alt text](figures/MNIST.jpg)
