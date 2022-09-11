@@ -1,6 +1,9 @@
-# Attackar: Attack of the Evolutionary Adversary
+# QuEry Attack
 
-## This paper was submitted to IEEE Transactions on Evolutionary Computation, SI: Evolutionary Computer Vision
+Code accompanying the paper:
+[Raz Lapid, Zvika Haramaty, Moshe Sipper, "An Evolutionary, Gradient-Free, Query-Efficient,
+Black-Box Algorithm for Generating Adversarial
+Instances in Deep Networks", preprint, 2022](https://drive.google.com/file/d/1RmPas0qMzjimeouCeLj7JuFewGat7iGE/view?usp=sharing).
 
 ### Abstract:
 Abstract—Deep neural networks (DNNs) are sensitive to adversarial data in a variety of scenarios,
@@ -39,5 +42,19 @@ efficiency.
   - images=200
   - tournament=25
 
-![alt text](figures/MNIST.jpg)
-![alt text](figures/CIFAR10.jpg)
+If you wish to cite this paper:
+```
+@article{lapid2022,
+  title={An Evolutionary, Gradient-Free, Query-Efficient,
+Black-Box Algorithm for Generating Adversarial
+Instances in Deep Networks},
+  author={Lapid, Raz and Haramaty, Zvika and Sipper, Moshe},
+  journal={},
+  volume={},
+  number={},
+  pages={},
+  year={2022},
+  publisher={},
+  note = {preprint}
+}
+```
