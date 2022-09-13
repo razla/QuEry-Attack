@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import torch
 torch.manual_seed(1)
 
-def load_dataset(name='mnist', imagenet_path='/cs_storage/public_datasets/ImageNet'):
+def load_dataset(name, imagenet_path='/cs_storage/public_datasets/ImageNet'):
     if name == 'mnist':
         test_set = datasets.MNIST('./data', train=False, download=True,
                                   transform=transforms.Compose([transforms.ToTensor(), ]))
