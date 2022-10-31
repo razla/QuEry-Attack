@@ -3,7 +3,7 @@
 Code accompanying the paper:
 [Raz Lapid, Zvika Haramaty, Moshe Sipper, "An Evolutionary, Gradient-Free, Query-Efficient,
 Black-Box Algorithm for Generating Adversarial
-Instances in Deep Networks", preprint, 2022](https://arxiv.org/abs/2208.08297).
+Instances in Deep Networks", preprint, 2022](https://www.mdpi.com/1999-4893/15/11/407).
 
 ### Abstract:
 Deep neural networks (DNNs) are sensitive
