@@ -1,5 +1,7 @@
 # QuEry Attack
 
+## This paper was accepted to a special issue Algorithms for Natural Computing Models - Algorithms journal
+
 Code accompanying the paper:
 [Raz Lapid, Zvika Haramaty, Moshe Sipper, "An Evolutionary, Gradient-Free, Query-Efficient,
 Black-Box Algorithm for Generating Adversarial
