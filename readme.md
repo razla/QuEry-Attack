@@ -63,4 +63,4 @@ ABSTRACT = {Deep neural networks (DNNs) are sensitive to adversarial data in a v
 DOI = {10.3390/a15110407}
 }
 ```
-![alt text](https://github.com/razla/QuEry-Attack/blob/master/figures/examples.jpg?raw=true)
+![alt text](https://github.com/razla/QuEry-Attack/blob/master/figures/examples.png)
