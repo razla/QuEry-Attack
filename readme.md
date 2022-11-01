@@ -64,5 +64,3 @@ DOI = {10.3390/a15110407}
 }
 ```
 ![alt text](https://github.com/razla/QuEry-Attack/blob/master/figures/examples.png)
-
-<img src="[relative/...](https://github.com/razla/QuEry-Attack/blob/master/figures/examples.png)" width="50px" />
